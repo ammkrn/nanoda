@@ -21,26 +21,15 @@ use crate::expr::{ Expr,
                    mk_app };
 
 
-/// This module implements inductive types. The general flow is:
-/// 1. The parser collects the elements needed to call `Inductive::new(..)`
-/// 2. Eventually we call `compile()` on the thing from 1
-/// 3. `compile()` creates the `Inductive`'s related declarations,
-///    introduction, and elimination rules. Introduction rules have
-///    two instances; one is `CompiledIntro`, which has intermediate info
-///    used for checking the introduction, and the other is the persistent
-///    `Declaration` spun off from an introduction rule that actually persists
-///    in the environment after typechecking is done, and is a member
-///    of the eventual `CompiledInductive`.
-///    Formation of the reduction rules is done by the constructors for
-///    `ReductionRule`, though there is special handling for k-like reduction
-///    which is discussed more below.
-/// 
-/// Many of the functions defined on `Inductive` are just defined to 
-/// pull them out of the body of `compile()` to keep it from just being
-/// a giant list of instructions. Most of them are only called once per
-/// inductive and could just as easily be placed inline.
-
-
+/// このモジュールは帰納型を実装します。広い目で見れば、ながれは:
+/// 1. パーサーは素材を集めてくれて、Inductive::new(..) を呼ぶ。
+/// 2. (1) でまとめた情報から作られた `Inductive` に対して、`compile()` が呼ばれ。
+/// 3. `compile()` って `Inductive` に関わる宣言、紹介規則、削除規則、縮小規則
+///    を作る。紹介規則は２つの形をします。最初なのは `CompiledIntro`っていう、
+///    自分のことを検査するために必要となる一時的な情報を持つ構造です。二番目なのは
+///    後で環境に置かれた`Declaration`です。
+///    縮小規則は `ReductionRule` のコンストラクターに作られて、k-like 縮小は
+///    特別に扱われたんです。
 #[derive(Debug, Clone)]
 pub struct Inductive {
     pub num_params: usize,
@@ -187,7 +176,6 @@ impl Inductive {
 
         let motive = mk_local(Name::from("C"), motive_type, BinderStyle::Implicit);
 
-        // Motive is the reason why you can't set it from the start.
         let intro_minors = compiled_intros.iter().map(|intro| {
             intro.mk_intro_minor_premise(&motive)
         }).collect::<Vec<Expr>>();
@@ -215,9 +203,9 @@ impl Inductive {
                                         Some(true)
                                     );
 
-        // The 'flag' for whether you're going to end up using a k value is :
-        // `compiled_intros` has only one element `e`,
-        // AND the intro_arguments of `e` are empty
+        // k value が必要かどうかってことを識別するフラッグは :
+        // `compiled_intros` ってただ一つの引数を持つ
+        // AND その引数の `intro_arguments` って空である。
         let detect_k = compiled_intros.len() == 1 
                        && compiled_intros.get(0)
                                          .map(|intro| intro.intro_arguments.is_empty())
@@ -279,12 +267,6 @@ impl Inductive {
         for i in compiled_intros.iter() {
             i.check_intro(env)
         }
-
-        // We want to be able to drop non-essential
-        // info about the original inductive and intro rules
-        // before we reach the function boundary and return 
-        // the `CompiledInductive` item. This is also what lets
-        // us take `parent` by reference in CompiledIntro.
 
         CompiledModification::CompiledInductive(self.base_declaration,
                                                 intro_declarations,
@@ -353,7 +335,7 @@ impl<'p> CompiledIntro<'p> {
 
     }
 
-    // Create a declaration's inductive hypotheses
+    // declaration の帰納仮定を作る
     pub fn ihs(&self, motive : &Expr) -> Vec<Expr> {
         self.intro_arguments.iter().zip(&self.intro_arg_data).filter_map(|(a, b)| {
             match b {
@@ -408,8 +390,7 @@ impl<'p> CompiledIntro<'p> {
         results_vec
     }
 
-    // `intro_idx` is just the position of this particular intro 
-    // rule in the `intro_minors` seq
+    // `intro_idx` ってこの紹介規則が `intro_minors`にある索引です。
     pub fn mk_reduction_rule(&self, 
                              intro_minors_idx : usize, 
                              intro_minors : &Vec<Expr>, 
@@ -447,7 +428,7 @@ impl<'p> CompiledIntro<'p> {
     }
 
 
-    // check an introduction rule
+    // 紹介規則を確認する
     pub fn check_intro(&self, env : &Arc<RwLock<Env>>) {
         assert!(self.intro_type_args.len() >= self.parent.num_params);
         let req_lhs_rhs = self.intro_type_args.iter().take(self.parent.num_params);

@@ -12,9 +12,9 @@ use crate::env::Env;
 use crate::errors::*;
 
 
-/// "A Typechecker" is just a collection of caches and a handle to the current
-/// environment (we only ever need to read from it in this case). 
-/// unsafe_unchecked is unused here since we haven't implemented a pretty printer yet.
+/// TypeChecker は型として見れば、カッシュのまとめと現在使用されている環境
+/// へのハンドルだけです。TypeChecker は環境から読むだけです、書く必要がありません。
+/// unsafe_unchecked はプリティープリンターが使用する値だけです。
 #[derive(Clone)]
 pub struct TypeChecker {
     unsafe_unchecked: bool,
@@ -51,13 +51,12 @@ impl TypeChecker {
         !self.unsafe_unchecked
     }
 
-    /// The "heights" of two terms `E1` and `E2` are used to determine whether one 
-    /// is defined in terms of or uses terms derived from the other. If at some point 
-    /// we need to unify `E1 == E2`, we want to unfold the HIGHER one FIRST, since 
-    /// it will eventually unfold into (something resembling) the lower term, 
-    /// whereas continued unfolding of the lower term will just get us more and 
-    /// more primitive terms that get further away from the goal.
-    /// Thanks to @Gebner for explaining this to me.
+    /// `E1` と `E2` という２つの項の「height・高さ」は, `E1`が`E2`を成分として使って
+    /// 定義されているかどうか（あるいは逆の関係がある）ってことを確かめるための数。
+    /// もし、`E1 と E2` をユニファイする必要が合ったら、height が高いやつを最初に
+    /// unfold したいんだ。なぜならば、その unfold に露出される項はいずれか height が低い
+    /// やつにりますが、逆に height が低いやつから始めていけば、もっともっと
+    /// 原始的な定義しか出てきません。
     fn def_height(&self, _fn : &Expr) -> u16 {
         if let Const(_, name, _) = _fn.as_ref() {
             self.env.read()
@@ -94,9 +93,9 @@ impl TypeChecker {
     }
 
 
-    /// More aggressive version of `unfold_pis`. Given some term `E`, repeats  
-    /// `{ apply whnf(e), then unfold_pis(e) }` until that combination 
-    /// fails to strip any more binders out.
+    /// expr モジュールにある `unfold_pis` と似たようなものですが、それよりアグレッシブ。
+    /// `{ apply whnf(e), then unfold_pis(e) } という循環が束縛子を取れなくなるまで
+    /// 繰り返す物です。
     pub fn normalize_pis(&mut self, e : &Expr) -> (Expr, Vec<Expr>) {
         let mut collected_binders = Vec::new();
         let mut acc = e.clone();
@@ -113,10 +112,7 @@ impl TypeChecker {
         (acc, collected_binders)
     }
 
-    // This only gets used once in inductive. Will use &[Expr]
-    // that comes as `toplevel_params` used during formation of intro rules.
-    // I'm not really sure how the length of the subst sequence corresponds
-    // to the number of times whnf is supposed to be executed to be honest.
+    /// この関数は inductive で一回だけ使用されます。紹介規則を作る内のものです。
     pub fn instantiate_pis(&mut self, intro_type : &Expr, toplevel_intro_params : &[Expr]) -> Expr {
         let mut iterations_left = toplevel_intro_params.len();
         let mut acc = intro_type.clone();
@@ -141,8 +137,7 @@ impl TypeChecker {
         acc.instantiate(toplevel_intro_params.into_iter().rev())
     }
 
-    /// Outward facing function/entry point for reduction to weak head normal form. 
-    /// Checks cache for a previous result, calling whnf_core on a cache miss.
+    /// ある項を whnf へ縮小するためのルートメソッドです。
     pub fn whnf(&mut self, e : &Expr) -> Expr {
         if let Some(cached) = self.whnf_cache.get(e) {
             return cached.clone()
@@ -200,13 +195,12 @@ impl TypeChecker {
          .fold_apps(apps.into_iter().rev())
     }
 
-    /// The entry point for executing a single reduction step on two
-    /// expressions.
+    /// ２つの `Expr` を一ステップで縮小する
     pub fn reduce_exps(&mut self, e1 : Expr, e2 : Expr, flag : Flag) -> Option<(Expr, Expr)> {
         let (fn1, apps1) = e1.unfold_apps_refs();
         let (fn2, apps2) = e2.unfold_apps_refs();
 
-        // we want to evaluate these lazily.
+        // 遅延評価を使いたいんです。
         let red1 = |tc : &mut TypeChecker| tc.reduce_hdtl(fn1, apps1.as_slice(), flag).map(|r| (r, e2.clone()));
         let red2 = |tc : &mut TypeChecker| tc.reduce_hdtl(fn2, apps2.as_slice(), flag).map(|r| (r, e1.clone()));
 
@@ -270,8 +264,6 @@ impl TypeChecker {
     }
 
 
-    /// only used in `check_def_eq_patterns`. Broken out
-    /// to prevent `patterns` from getting too big/hard to read.
     pub fn apps_eq(&mut self, 
                    apps1 : Vec<&Expr>, 
                    apps2 : Vec<&Expr>) -> ShortCircuit {
@@ -290,9 +282,8 @@ impl TypeChecker {
     }
 
 
-    /// Dispatch point for different decision procedures used to determine
-    /// whether two expressions are definitionally equal in a certain context.
-    /// Very much an eyesore.
+    /// ２つの `Expr` が定義的に等しいかどうかを確かめる手続きに用いられる
+    /// 長たらしいケース分析。
     pub fn check_def_eq_patterns(&mut self, whnfd_1 : &Expr, whnfd_2 : &Expr) -> ShortCircuit {
         let (fn1, apps1) = whnfd_1.unfold_apps_refs();
         let (fn2, apps2) = whnfd_2.unfold_apps_refs();
@@ -338,17 +329,16 @@ impl TypeChecker {
     }
 
     pub fn check_def_eq(&mut self, e1 : &Expr, e2 : &Expr) -> ShortCircuit {
-        // checks for both pointer and structural equality
+        // ポインター等値も構成等値もチェックします。
         if e1 == e2 {
             return EqShort
         } 
         
-        // check whether this equality has been seen before.
+        // この２つのようそって比較したことがあるかどうかをチェックするステップ
         if let Some(cached) = self.eq_cache.get(&e1, &e2) {
             return cached
         }
-
-        // otherwise, compute a result, then cache it in case we see these terms again.
+        // 比較したことがなければ、結果を計算して、カッシュする後返す。
         let result = if self.is_proof_irrel_eq(e1, e2) {
             EqShort
         } else {
@@ -366,8 +356,6 @@ impl TypeChecker {
         let whnfd_1 = self.whnf_core(e1_0, flag);
         let whnfd_2 = self.whnf_core(e2_0, flag);
 
-        // consult different patterns laid out in 
-        // check_def_eq_patterns to see how to proceed
         match self.check_def_eq_patterns(&whnfd_1, &whnfd_2) {
             EqShort => return EqShort,
             NeqShort => {
@@ -381,14 +369,13 @@ impl TypeChecker {
     }
 
 
-    // Literally the same function as its Lambda counterpart, but checks for a different
-    // enum discriminant (Pis instead of Lambdas).
+    /// Lambda 版と全く同じですが、Lambda の代わりに Pi を処理する。
     pub fn check_def_eq_pis(&mut self, mut e1 : &Expr, mut e2 : &Expr) -> ShortCircuit {
 
         let mut substs = Vec::new();
 
-        // weird rust syntax; just means 'for as long as e1 and e2 
-        // are both Pi terms, keep executing the code in this block"
+        // 分かりにくいけどかなり便利な rust 構文。意味は 「e1 と e2 が
+        // 両方 Pi である限り、ブロック内のコードを繰り返して」
         while let (Pi(_, dom1, body1), Pi(_, dom2, body2)) = (e1.as_ref(), e2.as_ref()) {
             let mut lhs_type = None;
 
@@ -397,8 +384,8 @@ impl TypeChecker {
                 let instd_d1_ty = dom1.ty.instantiate(substs.iter().rev());
 
                 lhs_type = Some(dom2.clone().swap_ty(instd_d2_ty.clone()));
-                // If the domains are found not to be equal, return early
-                // with NeqShort since the whole thing is therefore not equal
+                // dom が等しくなければ、項全体が等しくあるわけがないから, 残りを計算
+                // せずに NeqShortを返す
                 if !self.def_eq(&instd_d1_ty, &instd_d2_ty) {
                     return NeqShort
                 }
@@ -430,13 +417,12 @@ impl TypeChecker {
     }
 
 
-    // Literally the same function as its Pi counterpart, but checks for a different
-    // enum discriminant (Lambdas instead of Pis).
+    /// Pi 版と全く同じですが、Lambda の代わりに Pi を処理する。
     pub fn check_def_eq_lambdas(&mut self, mut e1 : &Expr, mut e2 : &Expr) -> ShortCircuit {
         let mut substs = Vec::new();
 
-        // weird rust syntax; just means "for as long as e1 and e2 
-        // are both Lambda terms, keep executing the code in this block"
+        // 分かりにくいけどかなり便利な rust 構文。意味は 「e1 と e2 が
+        // 両方 Lambda である限り、ブロック内のコードを繰り返して」
         while let (Lambda(_, dom1, body1), Lambda(_, dom2, body2)) = (e1.as_ref(), e2.as_ref()) {
             let mut lhs_type = None;
 
@@ -445,8 +431,8 @@ impl TypeChecker {
                 let instd_d1_ty = dom1.ty.instantiate(substs.iter().rev());
 
                 lhs_type = Some(dom2.clone().swap_ty(instd_d2_ty.clone()));
-                // If the lambda domains are found not to be equal, return early
-                // with NeqShort since the whole thing is therefore not equal
+                // dom が等しくなければ、項全体が等しくあるわけがないから, 残りを計算
+                // せずに NeqShortを返す
                 if !self.def_eq(&instd_d1_ty, &instd_d2_ty) {
                     return NeqShort
                 }
@@ -479,11 +465,7 @@ impl TypeChecker {
     }
 
 
-    /// Main dispatch point for type inference. Attempts to return early
-    /// by checking a cache of previously inferred terms. 
-    /// Some of the methods are fairly long so they've been broken out 
-    /// into separate functions, trusting in the compiler to inline 
-    /// where appropriate.
+    /// 型推論のメイン関数だ。カッシュを検索して早く返して見るものです。
     pub fn infer(&mut self, term : &Expr) -> Expr {
         if let Some(cached) = self.infer_cache.get(&term) {
             return cached.clone()
@@ -653,9 +635,8 @@ impl TypeChecker {
 
 
 
-/// Exercises some control over the degree of reduction. In particular, 
-/// affects whether `reduce_hdtl()` proceeds in attempting to reduce 
-/// a constant term.
+/// 縮小ステップの深さを盛業するためのものです。特に、`reduce_hdtl(..)` というメソッド
+/// が Const 項を縮小してみるかどうかを制御します。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Flag {
     pub rho: bool,

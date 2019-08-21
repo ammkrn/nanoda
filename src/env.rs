@@ -16,11 +16,9 @@ use Modification::*;
 use CompiledModification::*;
 
 
-/// Generic wrapper used to describe items to be added to
-/// the environment in some capacity, including axioms, 
-/// parts of inductive declarations, and parts of 
-/// quotient. See the method `tc::def_height()` for a description
-/// of what height is.
+/// 汎用的な「環境へ加えるはず」の物を表す包です。
+/// 公理、帰納型の成分、Quotの成分もこのように扱われます。
+/// tc::def_height で height について読めます。
 #[derive(Debug, Clone, PartialEq)]
 pub struct Declaration {
     pub name: Name,
@@ -30,15 +28,11 @@ pub struct Declaration {
     pub builtin: bool,
 }
 
-/// Environment containing the declarations, reduction rules, 
-/// and notations that make up the context for a set of Lean 
-/// items. Essentially, "the place where everything goes", and
-/// "the place you go to get stuff". We interact with this
-/// through an atomically reference counted RwLock so we can 
-/// interact with it from different threads, but because Arc<RwLock<T>>
-/// dereferences to <T>, and ParkingLot's RwLock implementation
-/// doesn't need to return a result, that part of it is usually 
-/// transparent.
+/// `Declaration`（宣言）, `ReductionRule`(縮小規則), `Notation`
+/// (記号) を保持する環境です。型検査装置の蓄積となる物です。複数スレッドから
+/// 同時にアクセス出来るために、Arc<RwLock<Env>> と対応しますが、Arc<T> が
+/// T として deref して、parkinng_lot の RwLock<T> が直接に T を返すこと
+/// によって、これらの包を直接に触る必要が殆どないんです。
 #[derive(Clone)]
 pub struct Env {
     pub declarations: HashMap<Name, Declaration>,
@@ -46,8 +40,7 @@ pub struct Env {
     pub notations : HashMap<Name, Notation>,
 }
 
-/// What you see is what you get. Has a name, a vector of universe
-/// parameters, and its type.
+/// 文字通りの物です。公理を表すやつ。
 #[derive(Clone)]
 pub struct Axiom {
     pub name : Name,
@@ -67,9 +60,9 @@ impl Axiom {
 }
 
 
-/// Lean definition, as you would introduce with the `def` or `definition`
-/// keywords. Has a name, universe parameters, a type,  and a value. Lemmas
-/// are also considered definitions. Follows the pattern: 
+/// Lean の `def`/`definition`キーワードで導入される定義を表す物です。
+/// 名前、ユニバース引数、型、値を持っています。Lean での `lemma` もこの型で
+/// 表されます。　
 #[derive(Debug, Clone)]
 pub struct Definition {
     pub name : Name,
@@ -133,38 +126,30 @@ impl Declaration {
 
 
 
-/** This is the thing we actually add to the environment and type check.
- They have the following strucutres :
- Axiom : Has one `Declaration` to add to the environment.
- CompiledDefinition : Has one `Declaration`, one `ReductionRule`, as well
-                      as a type (a pi expr) and a value (a lambda expr).
-                      The latter two are only type checked, not added to
-                      the environment.
- Quot : Has four Declarations rules (quot, quot.mk, quot.lift, quot.ind)
-        and one reduction rule.
- Inductive : Has its base type as a `Declaration`, a sequence of `Declaration`
-             items representing its introduction rules, a `Declaration`            
-             representing its elimination rule, and a sequence of 
-             `ReductionRule`s. */
+/// この型は環境へ追加して検査する構造です。種類は以下の構成をしています：
+///
+/// ```pseudo
+/// Axiom : 一つだけの環境に追加する `Declaration` を持っています。
+/// CompiledDefinition : `Declaration`, `ReductionRule` をそれぞれ一個持ってて、
+///                      定義の型・値を表す (Pi, Lambda) のペアも持っています。
+///                      型と値が検査された後、捨てられたんです。
+/// Quot : 紹介規則を`Declaration`として４つ持ってて (quot, quot.mk, 
+///        quot.lift, quot.ind)も一つの縮小規則を持っています。
+/// Inductive : ベース型、いくつかの紹介規則、削除規則を `Declaration, Vec<Declaration>,
+///             Decalaration というように持っています。縮小規則は Vec<ReductionRule>
+///             としても持っています。
+/// ```
 #[derive(Debug, Clone)]
 pub enum CompiledModification {
     CompiledAxiomMod     (Declaration),
     CompiledDefinition   (Declaration, ReductionRule, Expr, Expr),
-    //                                              Type, and Value
+    //                                                 型    値　
     CompiledQuotMod      (Vec<Declaration>, ReductionRule),
     CompiledInductive    (Declaration, Vec<Declaration>, Declaration, Vec<ReductionRule>),
-    // (base_type_axiom, intro_declarations, elim_declaration(rec), reduction_rules)
+    //                      (ベース型, 紹介原理　, recursor/削除原理, 縮小規則)
 }
 
 
-/// As with the other types, we have to wrap these in a way that feels
-/// a little bit excessive to get the behavior we want, which is that
-/// functions and collections can sometimes accept any `Modification`,
-/// and other times discriminate between IE a `DefMod` and an `Inductive`.
-/// We can't use a trait to tie everything together since we need
-/// to have collections of Modifications, and heterogeneous collections
-/// built over traits of different types would mean a large performance
-/// hit from dynamic dispatch.
 #[derive(Clone)]
 pub enum Modification {
     AxiomMod (Axiom),

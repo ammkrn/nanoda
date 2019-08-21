@@ -10,10 +10,9 @@ use crate::expr::{ Expr, InnerExpr::* };
 use crate::errors;
 
 
-/// Maps (ReductionRule, [(Level, Level)]) to an Exprssion;
-/// used to say "given this reduction rule and these universe
-/// substitutions, have I computed the resulting expression before?"
-/// If so, just return the cached expression calculated earlier.
+/// (ReductionRule, [(Level, Level)]) の鍵を Expr の値までマップするものです。
+/// タスクは、「この RecutionRule はこれらのユニバース置換を適用したことがありますか?
+///  やったことあったら、カッシュされた結果の Expr を返すだけでいい」ってことだ。
 #[derive(Clone)]
 pub struct ReductionCache {
     pub inner : HashMap<(ReductionRule, Vec<(Level, Level)>), Expr>
@@ -45,11 +44,9 @@ impl Hash for ReductionRule {
     }
 }
 
-/// Reduction rule has two constructors; `new_nonef_rr` is used by
-/// inductive types and quotient and has to do a little bit of
-/// up-front work before using `new_rr` to finish creating
-/// the reduction rule. `Definition` items can just call `new_rr`
-/// directly.
+/// ReductionRule って２つのコンストラクターがあります。`new_nondef_rr` って
+/// Inductive と Quotient に用いられて new_rr を呼ぶ前の準備をするものだけです。
+/// `Definition` アイテムは直接に `new_rr` を呼べます。
 impl ReductionRule {
     pub fn new_rr(lhs : Expr, rhs : Expr, def_eq_constraints : Vec<(Expr, Expr)>) -> Self {
         let lhs_var_bound = lhs.var_bound();
@@ -65,7 +62,7 @@ impl ReductionRule {
         };
 
         // IE : Vec[Var(9), Const(..), Var(19), Var(11), Sort(..)]
-        // becomes Vec[0, 2, 3]
+        // って Vec[0, 2, 3] になる。　
         let majors = lhs_args.iter().rev().enumerate().filter_map(|(idx, arg)| {
             match arg.as_ref() {
                 Var(..) => None,
@@ -73,8 +70,6 @@ impl ReductionRule {
             }
         }).collect::<Vec<usize>>();
 
-        // Only need to hash these two items since the other fields are derived
-        // from them.
         let digest = hash64(&(&lhs.get_digest(), &rhs.get_digest()));
 
         ReductionRule {
@@ -127,10 +122,8 @@ impl ReductionRule {
                 match var_subs.get_mut(*idx as usize) {
                     Some(already) => { std::mem::replace(already, e2); },
                     None => {
-                        // FIXME find a better way to pad placeholder values.
-                        // var_subs will eventually (on correct execution)
-                        // have every position filled, but AFAIK there aren't any
-                        // guarantees about receiving them in order, so you have to pad.
+                        // この配列の位置が全部満たされますが、順序が保証されてないから、
+                        // (2) (5) っていうような連続がきたら、(1), (3) (4) をパッドしなきゃ。
                         while var_subs.len() < *idx as usize {
                             var_subs.push(e2);
                         }
@@ -219,7 +212,7 @@ impl ReductionMap {
                 _ => continue
             }
         };
-        // if loop fails to find something to return early with...
+        // ループが早く返せる値なんて見つけられなかったら。。。　
         return None
     }
     
@@ -242,10 +235,6 @@ impl ReductionMap {
         }
     }
 
-    /// Inserting a new ReductionRule into rules, and ADDING its majors to the cumulative
-    /// set of the other Name |-> Vec<ReductionRule> mapping's majors. Also asserting some
-    /// invariants; if the original lookup of Name |-> Rule was Some, then Majors should
-    /// exist, and if it was None, then majors should not exist.
     pub fn add_rule(&mut self, new_rule : ReductionRule) {
         let name_key = new_rule.lhs_const_name.clone();
         let major_prem_vec = new_rule.majors.clone();
@@ -259,7 +248,7 @@ impl ReductionMap {
             None => {
                 let res1 = self.reduction_rules.insert(name_key.clone(), vec![new_rule]);
                 let res2 = self.major_premises.insert(name_key.clone(), major_prem_vec);
-                // assert they weren't already in the map
+                // 既にマップに入ってなかったことを主張する
                 assert!(res1.is_none() && res2.is_none());
             }
         }

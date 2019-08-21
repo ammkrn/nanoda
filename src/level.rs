@@ -6,19 +6,18 @@ use crate::errors;
 
 use InnerLevel::*;
 
-/// `Level` and `InnerLevel` together represent Lean's Sort/Universe level terms.
-/// Structurally, they're just trees, with `Level` acting as a reference counted
-/// wrapper around `InnerLevel`. Zero and Param values are always leaves;
-/// Zero is just Zero, and Param represents a variable by wrapping a `Name` value
-/// (like when you see `Sort u` in Lean).
-/// Succ is just like nat's succ, with the predecessor it points to as its only child. 
-/// `Max` is a node which always has two children, and represents the eventual 
-/// maximum of two `Level` values, which we can't always immediately resolve due to
-/// the presence of variables (Params). 
-/// `IMax` is a `Max` node with one special behavior; any time the right hand branch
-/// of an `IMax` resolves to `Zero`, the whole term resolves to `Zero`.
-/// This behavior has to do with correctly handling `Prop`, which you can read more
-/// about in 'Theorem Proving in Lean'
+/// `Level` と `InnerLevel` は Lean のソート・ユニバース項を表す型です。
+/// 構成は木構造で、ここにも `Level` は `InnerLevel` を包む物だけです。
+/// `Zero` と `Param` はいつも葉・終端物であります。ゼロはただのゼロ
+/// を表して、`Param` って名前を包むユニバース変数を表す物です。(例えば、Lean
+/// でよく見る `Sort 0`)。
+/// `Succ` ってユニバースのレベルを一で増やして、後者レベルは一つだけの子要素です。
+/// `Max` っていつも子供ノードを２つ持っているもので、２つのレベルからの最大のやつ
+/// を表すものです。`Param` のせいで、２つのレベルからどっちが大きいかってことを
+/// 計算できない時もあります。
+/// `IMax` って`Max` と似たようなものですが、`IMax` の左側が `0` になったら、その
+/// ノードの結果は全体 `0` になります。この行動は `Prop` をちゃんと処理するため
+/// の行為です。`Theorem Proving in Lean (英)` でそのことについて詳しく読めます。
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Level(Arc<InnerLevel>);
 
@@ -77,8 +76,7 @@ impl Level {
         }
     }
 
-    /// A non-naive way of combining two `Level` values (naive would be just 
-    /// creating a Max). gets used in `simplify`.
+    /// ２つのレベルを特別のように組む。これは `simplify`中に使用され。
     pub fn combining(&self, other : &Level) -> Self {
         match (self.as_ref(), other.as_ref()) {
             (Zero, _)              => other.clone(),
@@ -89,9 +87,7 @@ impl Level {
         }
     }
 
-    /// Brief simplification procedure mostly aimed at simplifying IMax terms 
-    /// (the rule about an IMax with a right hand side of Zero becoming Zero 
-    /// is enforced here).
+    /// レベルを軽く簡単にしてくれる手続きです。主に`IMax`を感嘆するための物です。
     pub fn simplify(&self) -> Level {
         match self.as_ref() {
             Zero | Param(..) => self.clone(),
@@ -108,10 +104,10 @@ impl Level {
         }
     }
 
-    /// Given a `Level` `L`, and a mapping of `Level::Param |-> Level` `M`, traverse 
-    /// `L` and execute :
-    ///  for each node `n` in `L`
-    /// if `n` is a Param, and `M` contains a mapping `n |-> x`, replace `n` with `x`
+    /// 任意のレベル `L` と `Level::Param |-> `Level` のマッピング `M` から、
+    /// `L` を巡回しながら各ノード `n` に対して :
+    /// IF (`n` is `Param(..)`) ∧ (mapping `n |-> x` ∈ M) 
+    /// THEN `n` を `x` と交換して
     pub fn instantiate_lvl(&self, substs : &Vec<(Level, Level)>) -> Level {
         match self.as_ref() {
             Zero => mk_zero(),
@@ -137,20 +133,18 @@ impl Level {
 
 
 
-    /// This is used in `leq_core` to handle the case where one of the levels in question 
-    /// is an IMax whose right hand side is some paramter `P`. In light of the 
-    /// special behvior of the right hand side of an IMax term, we need to essentially 
-    /// do case analysis on our terms before we can say for sure whether lhs <= rhs.
-    /// The cases we need to consider are :
-    /// 1. `P` will eventually be instantiated as `Zero`
-    /// 2. `P` will eventually be instantiated as some non-zero level.
-    /// 
-    /// So, we create two substitutions, and check that `leq` is true for both.
+    /// この関数は「一方側がImaxで、そのIMaxはParam子供を持っている」ケースを処理するため、
+    /// is_leq_core中に用いられます。`IMax`の左側がゼロ場合の特別な行為を考慮して、
+    /// lhs <= rhs って本当かどうかって言える前、ケース分析ををしなければなりません。
+    /// 見るケースは :
+    /// 1. `P` はいつか `0` になる
+    /// 2. `P` はいつか `0` ではない要素になる
+    ///
+    /// だから、２つの置換を作って、両ケースで lhs が本当かどうかを調査します。
     ///```pseudo
     /// let (lhs', rhs') = (lhs[Zero/P], rhs[Zero/P])
     /// let (lhs'', rhs'') = (lhs[Succ(P)/P], rhs[Succ(P)/P])
     /// return (lhs' ≤ rhs') && (lhs'' ≤ rhs'')
-    ///```
     pub fn ensure_imax_leq(&self, lhs : &Level, rhs : &Level, diff : i32) -> bool {
         assert!(self.is_param());
 
@@ -169,12 +163,10 @@ impl Level {
         closure(&nonzero_map, lhs, rhs)
     }
 
-    /// Essentially just a big analysis of different cases to determine (in the 
-    /// presence of variables and IMax's weirdness) whether the left hand side 
-    /// is less than or equal to the right hand side (using the ordering specific to 
-    /// Lean's sort terms, not the `Ord` instance Rust would use). 
-    /// `diff` is just a way of tracking applications of `Succ(x)` as we unroll 
-    /// both sides in each recursive call.
+    /// ParamとIMaxからの複雑性を念頭に置きながら、２つの与えられた`L1` と `L2` 
+    /// `Level` が与えられた場合、大きいなケース分析で `L1 ≤ L2` が真か偽か
+    /// ってことを検査する。この `≤` って Lean の型システムの `≤` だ、Rustの
+    /// ではない。`diff` っていう値は再帰呼出しに、前回の影響を追ってくれる値だけです。
     pub fn leq_core(&self, other : &Level, diff : i32) -> bool {
 
         match (self.as_ref(), other.as_ref()) {
@@ -236,15 +228,12 @@ impl Level {
         }
     }
     
-    /// Outward-facing function that uses `leq_core` to determine whether for two 
-    /// levels `L1` and `L2`, `L1 <= L2` using Lean's definition of order on 
-    /// universes, not Rust's definition of order on `Level` terms.
+    /// 外から呼ぶべきの `L1 <= L2` を調査してくれる関数です。
     pub fn leq(&self, other : &Level) -> bool {
         self.simplify().leq_core(&other.simplify(), 0)
     }
 
-    /// Uses antisymmetry to determine whether two levels are equal (according 
-    /// to Lean's rules for sorts)
+    /// leq と反対称性を使って、２つのレベルが等しいかどうかを調査する関数
     ///```pseudo
     ///(x ≤ y ∧ y ≤ x) → x = y
     ///```
@@ -255,8 +244,7 @@ impl Level {
         l1.leq_core(&l2, 0) && l2.leq_core(&l1, 0)
     }
 
-    /// There is no level strictly less than Zero, so for any level `L`, if `L` is 
-    /// less than or equal to Zero, it must be that L is equal to Zero.
+    /// `Level` が `Zero` かどうかを確かめるための関数です。
     ///```pseudo
     /// `∀ (L : Level), (L ≤ Zero) ∧ (¬ ∃ L' : Level, L' < Zero) → L = Zero`
     ///```
@@ -264,8 +252,7 @@ impl Level {
         self.leq(&mk_zero())
     }
 
-    /// for any level `L`, if Succ (Zero) is less than or equal to `L`, it cannot be 
-    /// that L is equal to Zero
+    /// `Level` が Zero ではないことを確かめる関数だえす。　
     ///```pseudo
     /// ∀ (L : Level), S (Zero) ≤ L → L ≠ 0
     ///```

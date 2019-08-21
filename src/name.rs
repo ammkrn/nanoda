@@ -4,12 +4,11 @@ use hashbrown::HashSet;
 
 use InnerName::*;
 
-/// `Name` is an Arc wrapper for the `InnerName` enum, which together represent Lean's hierarchical names, where
-/// hierarchical just means "nested namespaces that can be accessed with a dot", like `nat.rec`. They have a very 
-/// similar structure to an inductive `List` type, with `Anon`, the anonymous name acting as `Nil`, 
-/// while `Str` and `Num` act like `cons`, but specialized to consing string and integer elements respectively.
-/// Name values always begin with `Anon`, and can contain any combination of `Str` and `Num` applications, 
-/// IE (in pseudo-code) `Num n (Str s (Num n' (Str s' (Anon))))` would be a valid construction.
+/// `Name` は `InnerName` を包む物だけです。基本的に、Lean の「階層的名前」
+/// を表すものであります。「階層的」ってことは `.` 記号で分裂される入れ子構造の
+/// 名前ってことだけです。この型は逆の方向へ拡張する List と似たようなものです。
+/// List と同様に、`Name`はいつも `Anon` から始めて、Str と Num は Cons
+/// のようなコンストラクターです。Str と Num は同じ名前の構成で使用可能です。
 #[derive(Clone, PartialEq, PartialOrd, Ord, Eq, Hash)]
 pub struct Name(Arc<InnerName>);
 
@@ -36,20 +35,21 @@ impl Name {
     }
 
 
-    /// Extend some hierarchical name with a string. IE `nat` => `nat.rec`
+    /// 与えられた Name を文字列で拡張する。例えば、`nat` => `nat.rec`
     pub fn extend_str(&self, hd : &str) -> Self {
         Str(self.clone(), String::from(hd)).into()    // InnerName -> Name
     }
 
-    /// Extend some hierarchical name with an integer. IE `prod` => `prod.3`
+    /// 与えられた Name を数字で拡張する。例えば `prod` => `prod.3`
     pub fn extend_num(&self, hd : u64) -> Self {
         Num(self.clone(), hd).into()                  // InnerName -> Name
     }
 
 
-    /// Given a suggested prefix and a set of names we want to avoid collisions with,
-    /// extend the suggestion with an incrementing integer until we get a name that doesn't collide with
-    /// any of the names given in `forbidden`. This implementation relies on the laziness of iterators.
+    /// おすすめの名前 `n` と 既に使用されている名前の集合 `S` から、
+    /// `n` が既に使用されているなら、`n`に位置で増やしている数字を追加して、
+    /// 使用されていない名前作れる前に繰り返す関数。この関数は iterator
+    /// の遅延性に頼っています。
     pub fn fresh_name(suggested : &str, forbidden : HashSet<&Name>) -> Self {
         let base = Name::from(suggested);
         if !forbidden.contains(&base) {
@@ -68,7 +68,6 @@ impl Name {
 
 
 
-/// Convenience function to get the `InnerName` from a `Name`    
 impl std::convert::AsRef<InnerName> for Name {
     fn as_ref(&self) -> &InnerName {
         match self {
@@ -77,20 +76,18 @@ impl std::convert::AsRef<InnerName> for Name {
     }
 }
 
-/// Convenience function for converting an Arc<InnerName> into its newtype `Name`
 impl From<Arc<InnerName>> for Name {
     fn from(x : Arc<InnerName>) -> Name {
         Name(x)
     }
 }
-// Convenience function for converting an InnerName to a Name
+
 impl From<InnerName> for Name {
     fn from(x : InnerName) -> Name {
         Name(Arc::new(x))
     }
 }
 
-/// Creates a Name value from a string slice. 
 impl From<&str> for Name {
     fn from(s : &str) -> Name {
         mk_anon().extend_str(s)
@@ -98,12 +95,10 @@ impl From<&str> for Name {
 }
 
 
-/// Hierarchical names should display from left to right, with a `.` separating elements, and the anonymous name
-/// should display as an empty string.
-/// IE the formatted version of Anon ++ Str(list) ++ Str(cases_on) ++ Num(777) should display as
-/// `list.cases_on.777`
-
-
+/// `Name`　は左から右へ、各成分が `.` で分裂されているように印字されるべきです。
+/// `Anon` はからの文字列のように印字されるべきです。
+/// 例えば、Num(777 (Str (cases_on (Str (list (Anon))))))
+/// は `list.cases_on.777` になるべき
 impl std::fmt::Debug for Name {
     fn fmt(&self, f : &mut std::fmt::Formatter) -> std::fmt::Result {
         match self.as_ref() {

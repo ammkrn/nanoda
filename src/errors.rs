@@ -1,15 +1,10 @@
 use std::fmt::Debug;
 
-/// Most of these are errors that get thrown in the event
-/// that a pattern match expects something that it doesn't end up getting.
-/// For instance, partial conversions or failed definitional equality/
-/// inference checks. Ideally we would get rid of the ones related to partial functions,
-/// but Rust's type system doesn't offer discrimination of enum variants
-/// at the type level, and my experience trying to break each enum variant
-/// out into its own struct suggested that the amount of extra code you would need
-/// just to do explicit casting between types would be a huge hit to readability
-/// and directness. 
-
+/// これらのエラーは大半の時に、パターン一致が変なものをもらう時に投げられたものです。
+/// 例えば、部分的関数が処理出来ない物をもらう文脈で。理想的に、こういうエラーを
+/// 型システムで処理出来ますが、現在、rust は列挙型の種類を静的に識別できなので
+/// (GADT のように)その行動をやるのはすごくノイズとなる明示的な型変換・型定義
+/// が必要となるからやりません。
 
 pub fn err_get_serial<T : Debug>(loc : u32, owise : &T) -> ! {
     eprintln!("expr line {}; Expr::get_serial is a partial function defined only on expresisons made with the `Local` constructor, but it was called with {:?}\n", loc, owise);

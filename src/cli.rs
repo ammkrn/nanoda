@@ -11,45 +11,34 @@ use crate::name::{ Name, mk_anon };
 use crate::pretty::pretty_printer::{ PrettyPrinter, PPOptions };
 use crate::env::Env;
 
-/// A basic example
 #[derive(StructOpt, Debug)]
 #[structopt(raw(setting = "structopt::clap::AppSettings::ColoredHelp"))]
 #[structopt(name = "nanoda",
-            about = "A type checker for the Lean theorem prover",
+            about = "Lean 定理支援システムの型検査装置",
             author = "ammkrn",
             version = "0.0.1")]
 pub struct Opt {
-    //A flag, true if used in the command line. Note doc comment will
-    //be used for the help message of the flag.
-    //Activate debug mode (currently does nothing)
     #[structopt(short = "d", long = "debug")]
     pub debug: bool,
 
      
-    /** tell r_type how many threads you want it to use.
-        Use `1` to check in serial, though r_type is
-        very much not optimized for serial execution.
-        Recommended : 4-8. */
+    /** スレッドの個数を指定する。1 を渡せば、直列で実行出来ますが、
+        nanoda は並行実行を考慮して最適化されたんです。おすすめのスレッド
+        個数は 4 以上です。
+        */
     #[structopt(short = "t", long = "threads", default_value = "4")]
     pub num_threads : u64,
 
-    /** tell r_type you want to pretty print something; options and the
-        list of definitions to print are set in config files, called
-        `pretty_options.txt` and `pretty_names.txt`. r_type will look for these
-        both in the current working directory, and in an optional subdirectory
-        called `config`.
-        The names of the definitions you want pretty printed should be line separated
-        and are accepted in the same format as in Lean (IE has_add.rec).
-        The pretty printer options should also be line separated, and are also
-        accepted as in Lean. For example, to turn on implicits, r_type will accept
-        either `set_option pp.implicit true` or `pp.implicit true`. 
-        Both of these files will ignores (as comments) lines beginning with `#` */
+    /** プリティープリンター(PP)を有効。PP の設定・プリントされる定義のリスト
+        は config ファイルで制御されます。./config にあるファイルに詳しく
+        説明されます。
+        */
     #[structopt(short = "p", long = "print")]
     pub print : bool,
 
-    /** File(s) to type check. Passing only a filename will look in the
-        current directory. A full path will look for the file in the
-        specified location*/
+    /** 検査したいファイルのリスト。名前しか渡されなければ、作業ダイレクトリー
+        に探して、フルパスが渡されたらその位置に探します。
+        */
     #[structopt(name = "FILE x N", parse(from_os_str))]
     files: Vec<PathBuf>,
 }

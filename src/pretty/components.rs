@@ -6,7 +6,7 @@ use Notation::*;
 pub const MAX_PRIORITY : usize = 1024;
 #[derive(Clone, PartialEq)]
 pub enum Notation {
-    //    function, priority, op
+    //         関数, 優先, 演算
     Prefix  (Name, usize, String),
     Infix   (Name, usize, String),
     Postfix (Name, usize, String),

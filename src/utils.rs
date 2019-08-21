@@ -11,11 +11,8 @@ use crate::pretty::components::Notation;
 use Either::*;
 use ShortCircuit::*;
 
-/// Items used to communicate with the threads looping through
-/// the queues that hold the typechecker's work. Needed in order
-/// to discriminate between the case of "the queue doesn't have
-/// any work for you right now" and "the job this queue was needed
-/// for is complete"
+///「仕事終わりました」ってことをワーカースレッドに伝えるためのメッセージです。
+/// 仕事を待っているって状態もあるから、これは別のものとして定義されたんです　。
 pub const END_MSG_ADD : QueueMsg<Modification> = Right(EndMsg(()));
 pub const END_MSG_NOTATION : QueueMsg<Notation> = Right(EndMsg(()));
 pub const END_MSG_CHK : QueueMsg<CompiledModification> = Right(EndMsg(()));
@@ -27,7 +24,8 @@ where I : IntoIterator<Item = A>,
     i.into_iter().rev().fold(init, |acc, next| f(next, acc))
 }
 
-/// Used to try and ease some of the pain of working with long sequences.
+/// 構文糖衣の量を減らすためのマクロだけです。いくつかの自立の物をイテレータに
+/// 組んでくれるマクロだけだ。
 #[macro_export]
 macro_rules! chain {
     ( $( $e:expr),* ) => {
@@ -44,7 +42,7 @@ macro_rules! chain {
     };
 }
 
-/// Used to try and ease some of the pain of working with long sequences.
+/// 複数の連続(vecなど)を単一のイテレータに組んでくれるマクロだ。
 #[macro_export]
 macro_rules! seq {
     ( $( $e:expr),* ) => {
@@ -77,13 +75,12 @@ pub fn max3(n1 : u16, n2 : u16, n3 : u16) -> u16 {
 
 
 
-/// Used frequently the typechecker; we want to be able to communicate
-/// the following states to the observer of some return value :
-/// 1. These two expressions can be further reduced/inferred, but I can
-///    already tell you they're definitionally equal, so don't bother.
-/// 2. These two expressions can be further reduced/inferred, but I can
-///    already tell you they're NOT definitionally equal.
-/// 3. These need more work before I can tell whether or not they're equal.
+/// これは TypeChecker がよく使用するものです。２つの Expr 
+/// の定義的等値性比較を計算することが重く慣れる事情もあるから、
+/// ２つの項が完全に縮小・推論される前に等しいってことが分かってきた
+/// 場合、計算をそのままで中止して、結果を callsite へ返すための
+/// ものです。`Unknown` って「まだ分からないから縮小・推論を続いて」
+/// って言う意味です。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ShortCircuit {
     EqShort,
@@ -115,12 +112,11 @@ pub enum Either<L, R> {
     Right(R),
 }
 
-/// HashMap based cache; given two expressions, will tell you whether
-/// the TypeChecker has seen this particular pair before, and if so,
-/// what the result of a definitional equality comparison was. 
-/// HashMap<(Expr, Expr), ShortCircuit> would be more intuitive, but
-/// would require cloning both keys on every lookup due to the memory
-/// layout of tuples.
+/// ハッシュマップに基づくカッシュ、任意の `e1`と`e2` 表現が与えられたら、
+/// TypeChecker がそのペアをみたことがあったら、定義的等値性比較の計算
+/// された結果を返してくれる。HashMap<(Expr, Expr), ShortCircuit> の方が
+/// 直感的だと思いますが、そうすれば rust は参照・ポインターだけで鍵を
+/// 検索することができなくなってしまいます。
 #[derive(Clone)]
 pub struct EqCache {
     inner : HashMap<Expr, Vec<(Expr, ShortCircuit)>>

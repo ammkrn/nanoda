@@ -14,11 +14,9 @@ use crate::expr::{ BinderStyle::*,
                    mk_sort };
 
 
-/// Quot ends up being four introduction rules and one reduction rule 
-/// which are declared once, very early on in the export file 
-/// (right after the inductive definition of equality). 
-/// This module is pretty much just "by hand" assembly of Quot. I'm not sure
-/// why the export file doesn't lend more help in putting this together.
+/// Quot 型は結果的に紹介規則を４つ・縮小規則を一つ持っている構造になります。
+/// この型は一回だけ作られて宣言されたんです。このモジュールの作業は Quot 項を手動で
+/// 作ることだけです。
 #[derive(Clone)]
 pub struct Quot {
     pub declarations: Vec<Declaration>,
@@ -26,10 +24,7 @@ pub struct Quot {
 }
 
 pub fn new_quot() -> Modification {
-    // There are a bunch of expressions that get used ad nauseum here,
-    // so we define some of them as reusable omponents to make later definitions
-    // (a little bit) more compact. The key definitions are annotated with their
-    // lean equivalent
+    // これらの表現が何回も使用されるんだから、ここで定義して、より短い名前で定義します。
     let prop = mk_prop();
     let param_u = || mk_param("u");
     let param_v = || mk_param("v");
@@ -48,7 +43,7 @@ pub fn new_quot() -> Modification {
     let quot_mk_const_univ_u = || mk_const(Name::from("quot").extend_str("mk"), vec![param_u()]);
     let quot_pi_app = sort_u.fold_pis(chain![&_A, &_R]);
 
-    // First introduction rule. in Lean : 
+    // 第一紹介規則 :Lean で、
     // quot : Π {α : Sort u}, (α → α → Prop) → Sort u
     let quot = Declaration::mk(Name::from("quot"),
                                     params_u(),
@@ -60,7 +55,7 @@ pub fn new_quot() -> Modification {
 
     let quot_mk_f = _A.mk_arrow(&quot_mk_f_a);
         
-    // Second introduction rule. In lean : 
+    // 第二紹介規則 :Lean で,
     // quot.mk : Π {α : Sort u} (r : α → α → Prop), α → @quot α r
     let quot_mk = Declaration::mk(
         Name::from("quot").extend_str("mk"),
@@ -84,7 +79,7 @@ pub fn new_quot() -> Modification {
     let pis_together = triple_arrow.fold_pis(chain![&_A, &_R, &_B, &_f]);
 
 
-    // Third introduction rule. In lean : 
+    // 第三紹介規則 : Lean で ,
     // quot.lift : Π {α : Sort u} {r : α → α → Prop} {β : Sort v} (f : α → β), 
     //               (∀ (a b : α), r a b → f a = f b) → quot r → β
     let quot_lift = Declaration::mk(
@@ -110,7 +105,7 @@ pub fn new_quot() -> Modification {
     let ind_pi_2 = B2_q.fold_pis(chain![&_q]);
     let ind_arrows = ind_pi_1.mk_arrow(&ind_pi_2);
 
-    // Last introduction rule. In Lean : 
+    // 最後の紹介規則 : Lean で、
     // quot.ind : ∀ {α : Sort u} {r : α → α → Prop} {β : @quot α r → Prop},
     //            (∀ (a : α), β (@quot.mk α r a)) → ∀ (q : @quot α r), β q
     let quot_ind = Declaration::mk(
@@ -138,7 +133,7 @@ pub fn new_quot() -> Modification {
                                                           &_h, 
                                                           &arg2_rhs_apps]);
 
-    // Sole reduction rule.
+    // 縮小規則
     let quot_red = ReductionRule::new_nondef_rr(
         &[_A.clone(), _R.clone(), _B.clone(), _f.clone(), _a.clone(), _h.clone()],
         quot_red_arg2,

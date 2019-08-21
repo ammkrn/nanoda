@@ -1,7 +1,7 @@
-# lines beginning with a hashtag are ignored as comments
-# options are written as they are in Lean. (set_option prefix is optional)
-# each option goes on a new line
-# an example which specifies the default settings can be seen below :
+# ハッシュ記号から始まる線はコメントとして無視されます。
+# オプションは Lean と同様に指定されるべきです。
+# オプションを一行ごとに書いて下さい。
+# デフォールトと同じコンフィグの例示は:
 
 pp.all false
 pp.implicit true

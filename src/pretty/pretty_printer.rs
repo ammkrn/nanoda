@@ -15,9 +15,7 @@ use crate::pretty::components::{ word_wrap_val, Notation, Parenable, Notation::*
 
 
 
-// We're using a RefCell since we need the ability to 
-// make mutable borrrows recursively, but we don't need to
-// go across threads. A recursive mutex would be overkill.
+// この場合、可変借用を再帰的に取る機能が必要だから、RefCellを用います。
 #[derive(Clone)]
 pub struct PrettyPrinter {
     pub pp_options : PPOptions,

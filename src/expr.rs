@@ -14,32 +14,26 @@ use crate::errors;
 
 use InnerExpr::*;
 
-/// Because we calculate hashes based on structure, we need
-/// something to distinguish between Pi and Lambda expressions, which 
-/// apart from their enum discriminant, have the same structure internally.
-/// We just use a prime number in a (probably futile) attempt to reduce
-/// the likelihood of hash collisions since they'll often be kept in hash maps.
-/// Prop itself is treated as a constant, so we also need to know its hash
-/// beforehand.
-pub const LAMBDA_HASH   : u64 = 402653189;
-pub const PI_HASH       : u64 = 1610612741;
-pub const PROP_HASH     : u64 = 786433;
-pub const PROP_CACHE    : ExprCache = ExprCache { digest : PROP_HASH, 
+/// ハッシュを計算する際に用いられる識別子。
+const LAMBDA_HASH   : u64 = 402653189;
+/// ハッシュを計算する際に用いられる識別子。
+const PI_HASH       : u64 = 1610612741;
+/// これと PROP_CACHE って Prop を定数として使用出来るための物です。
+const PROP_HASH     : u64 = 786433;
+const PROP_CACHE    : ExprCache = ExprCache { digest : PROP_HASH, 
                                                   var_bound : 0, 
                                                   has_locals : false };
 
-/// Globally visible incrementing counter for fresh Local names. 
-/// Lazy man's way of creating fresh names across threads.
-/// `Local` items need to have the property that two locals will
-/// have the same serial iff `B` was created by executing `clone()`
-/// on `A`. 
+/// 未使用の Local 名前を作るために、一で増やすカウンターを使ってるんだけです。
+/// Atomic であるので、複数のスレッドから呼べます。Local という Expression
+/// の類は `clone()` で作られたら、元のやつと同じ名前を持つ必要がありますが、
+/// コンストラクターから作られたやつはどの事情でもユニーク名前を持つことが必要です。
 pub static LOCAL_SERIAL : AtomicU64 = AtomicU64::new(0);
 
 
 
 
-/// Denote different flavors of binders.
-/// Each variant corresponds to the following Lean binder notation : (click for info)
+/// 束縛記号 (binder) の様々な種類を表す型です。マッピングは以下：
 ///``` pseudo
 ///Default         |->   ( .. )
 ///Implicit        |->   { .. }
@@ -55,9 +49,9 @@ pub enum BinderStyle {
 }
 
 
-/// Binding is used to represent the information associated with a Pi, Lambda, or Let
-/// expression's binding. pp_name and ty would be like the `x` and `T` respectively
-/// in `(λ x : T, E)`. See the doc comments for BinderStyle for information on that.
+/// この型は Pi・Lambda・Let （束縛を表す表現）の束縛を指定するための型です。
+/// 例えば、`(λ x : T, E)` を見れば、pp_name って `x`, ty って `T と
+/// なります。
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Binding {
     pub pp_name : Name,
@@ -95,7 +89,8 @@ impl Binding {
 
 }
 
-/// Arc wrapper around `InnerExpr`. See  InnerExpr's docs.
+/// これは木構造を効率的に使えるための `InnerExpr` を包むものです。
+/// `Expr` の木を対処する関数はこの型と対応します。
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Expr(Arc<InnerExpr>);
 
@@ -107,9 +102,9 @@ impl std::fmt::Debug for Expr {
 
 
 
-/// special constructor for an Expr::Sort that corresponds to `Prop`
+/// Prop と対応する特別な Expr::Sort のコンストラクターです。
 pub fn mk_prop() -> Expr {
-    Sort(PROP_CACHE, mk_zero()).into() // into Level from InnerLevel
+    Sort(PROP_CACHE, mk_zero()).into() // InnerLevel -> Level
 }
 
 
@@ -230,9 +225,9 @@ impl Expr {
         }
     }
 
-    /// !! Partial function !!  
-    /// If the expression is a Local, returns its unique identifier/serial number.
-    /// Else kills the program with a fatal error.
+    /// !! 部分的関数 !!  
+    /// 与えられた変数が Local なら、その Local の一貫番号が返されます。
+    /// Local ではなければ、エラーを起こしてしまう。
     pub fn get_serial(&self) -> u64 {
         match self.as_ref() {
             Local(_, serial, _) => *serial,
@@ -240,27 +235,20 @@ impl Expr {
         }
     }
 
-    /// This is the primitive joining of applying two expressions with the arrow
-    /// constructor. Given some `e1` and `e2`, constructs `e1 → e2` by turning
-    /// it into `Π (e1), e2` 
+    /// これは２つの表現を矢印で組んでくれる原始的なものです。`e1` と `e2` という表現
+    /// があったら、`Π (e1), e2` というように `e1 → e2` が作られて返されたんです。
     pub fn mk_arrow(&self, other : &Expr) -> Expr {
         let binding = Binding::mk(mk_anon(), self.clone(), BinderStyle::Default);
         mk_pi(binding, other.clone())
     }
 
 
-    /// The goal here is to traverse an expression, replacing Local terms with Variables
-    /// where possible, while caching terms we've already performed substitution on. It's
-    /// a relatively generic traversal where we cache expressions to that we 
-    /// don't have to fully evaluate subtrees if we already know how they evaluate.
-    /// The 'interesting' case is when we run across a Local `L` in our tree; we look 
-    /// in the collection `lcs` for a term `L'` such that `L' = L`. If there isn't one,
-    /// just return `L`. If there IS one, we note the position/index of `L'` in `lcs`,
-    /// create a variable whose inner index is pos(L'), and return the newly created
-    /// variable.
-    /// `offset` is used to mark the transition from one binder's scope into another;
-    /// you can see that it only increments as we recurse into the body of a binder
-    /// (Lambda, Pi, or Let term).
+    /// ある Expr を巡回して、出来る限りに Local を Var で交換してみながら、既に見た項・subtree
+    /// を二回評価しないために結果をカッシュする仕事です。交換が行われるケースは `Local` のケースだ。
+    /// その時に、`lcs` という連続を `Local` と等しくある項を探して、見つけられた場合、その項の
+    /// インデックス `n` をとって、Local を新たに作った Var(n) と交換する。`offset` 値は、
+    /// ある束縛子（Pi, Lambda, Let バインダー）の範囲から、他のやつの範囲へ移動する時に
+    /// 増やされた数字です。
     pub fn abstract_<'e>(&self, lcs : impl Iterator<Item = &'e Expr>) -> Expr {
         if !self.has_locals() {
             return self.clone() 
@@ -318,33 +306,16 @@ impl Expr {
     }
 
 
-    /// Similar shape to abstract; we traverse an expression, but this time we want
-    /// to substitute variables for other expressions, stil carrying a cache and
-    /// using an offset to track the transition into the body of successive binders.
-    /// The interesting case this time is when we run across a Variable; we
-    /// make sure the index is in bounds, then use it to index into the sequence
-    /// `es`, replacing our Variable with `es`[idx].
-    /// `instantiate_core` is the single most time consuming part of running
-    /// the type checker, with some of the expression trees it has to traverse
-    /// spanning millions of nodes, so if you're going to implement a 
-    /// type checker yourself and you want it to be fast, figure out a way
-    /// to make these functions efficient.
+    /// この関数は abstract と似たような形をしている巡回です。しかし、今回は Var を他の Expr
+    /// と交換してみたいんです。ここにもカッシュ・offset が用いられます。今回の特別ケースは
+    /// Var 対の行動です。Var(n) の `n` がインバウンドってことを確認した後、`es[n]`
+    /// を抜き出さずにコピーして、コピーした物を元の Var(n) と交換するように進んでいきます。
     pub fn instantiate<'e>(&self, es : impl Iterator<Item = &'e Expr>) -> Expr {
         let es = es.collect::<Vec<&Expr>>();
 
         let mut cache = OffsetCache::new();
         self.instantiate_core(0usize, &es, &mut cache)
     } 
-
-    /// same as instantiate, but searches the vector backwards. This is only here for
-    /// practical reasons since rust's Vec type only allows pushing from one side.
-    //pub fn instantiate_rev<'e>(&self, es : impl Iterator<Item = &'e Expr> + DoubleEndedIterator) -> Expr {
-    //    let es = es.rev().collect::<Vec<&Expr>>();
-    //    let mut cache = OffsetCache::new();
-    //    self.instantiate_core(0usize, &es, &mut cache)
-    //} 
-
-
 
     fn instantiate_core(&self, offset : usize, es : &Vec<&Expr>, cache : &mut OffsetCache) -> Self {
         if self.var_bound() as usize <= offset {
@@ -395,11 +366,8 @@ impl Expr {
         }
     }
 
-    /// This just performs variable substitution by going through
-    /// the `Level` items contained in `Sort` and `Const` expressions.
-    /// For all levels therein, attempts to replace `Level::Param`
-    /// items with something in the `substs` mapping, which maps
-    /// (Level::Param |-> Level)
+    /// ある `Expr` の `Sort` と `Const` にあるLevel::paramを 
+    /// 交換してみる関数です。`substs` という鍵値マッピングを使って交換してみる
     pub fn instantiate_ps(&self, substs : &Vec<(Level, Level)>) -> Expr {
         if substs.iter().any(|(l, r)| l != r) {
             match self.as_ref() {
@@ -449,11 +417,9 @@ impl Expr {
     }
 
 
-    /// Note for non-rust users, IntoIterator is idempotent over Iterators; if
-    /// we pass this something that's already an interator, nothing happens. 
-    /// But if we pass it something that isnt YET an iterator, it will turn 
-    /// it into one for us. Given a list of expressions [X_1, X_2, ... X_n] and 
-    /// some expression F, iteratively apply the `App` constructor to get :
+    /// 与えられた`F : Expr` と [X_1, X_2, ... X_n] : List<Expr> から、 App
+    /// コンストラクターを以下の形を作るために繰り返し適用する関数。
+    ///
     ///```pseudo
     /// App( ... App(App(F, X_1), X_2)...  X_n)
     /// 
@@ -476,10 +442,10 @@ impl Expr {
     }
     
 
-    /// From an already constructed tree, unfold all consecutive 
-    /// `App` constructors along their spine from right to left.
+    /// 既に痛苦られた木構造から、背骨の右から左へ unfold していく関数です。
+    /// 以下の図のように働きます。
+    ///
     ///```pseudo
-    /// `App` nodes, and the bottom left expression `F`.
     /// 
     ///              App      =>   (F, [X_n subtree, X_2 subtree, X_1 subtree])
     ///            /    \
@@ -501,9 +467,8 @@ impl Expr {
 
 
 
-    /// Same as unfold_apps_refs, but returns owned values instead 
-    /// of references and returns the vector backwards. used a 
-    /// couple of times in inductive, and once in reduction.
+    /// unfold_aps_refs とにたような物ですが、返された subtree を持っている
+    /// ベクターは逆で、返された物は所有されている値です。
     pub fn unfold_apps_special(&self) -> (Expr, Vec<Expr>) {
         let (mut _fn, mut acc) = (self, Vec::with_capacity(10));
         while let App(_, f, app) = _fn.as_ref() {
@@ -514,7 +479,8 @@ impl Expr {
         (_fn.clone(), acc)
     }
 
-    /// Given two expressions `E` and `L`, where `L` is known to be a Local :
+    /// `E` と `L` から、`L` が `Local` であるってことを確認して、Pi で
+    /// 以下のように作って
     ///```pseudo
     /// let E = E.abstract(L)
     /// return (Π (L) (E'))
@@ -526,9 +492,8 @@ impl Expr {
     }
 
 
-    /// Given a list of Local expressions [L_1, L_2, ... L_n] and a 
-    /// body `E : Expr`, use your favorite method (fold_right is 
-    /// nice) and the Pi constructor to make :
+    /// `Expr::Local` のリストと `E:Expr` から、fold_right あるいは空きなメソッド
+    /// を使って、Pi コンストラクターで以下の形を作る
     ///
     ///```pseudo
     /// (Π L_1, (Π L_2, ... (Π L_n, E)))
@@ -555,11 +520,8 @@ impl Expr {
         acc
     }
 
-    /// This unfolds consecutive applications of `Pi` into the "core" term,
-    /// and a list of binders pulled from the Pi applications. This is one of the few
-    /// places where we use an in-place mutation since it's used iteratively and we don't
-    /// want a bunch of vector allocations for no reason.
-    /// An example of its application might look like :
+    /// これは連続的な `Pi` コンストラクターの適用を分解してくれる物です。例示を見れば
+    /// 分かると思います。この関数は繰り返し適用で用いられるはずだから、累算器は可変 Vector です。　
     ///```pseudo
     ///  let t = Π α, (Π β, (Π γ, E))
     ///  let binder_acc = []
@@ -575,7 +537,8 @@ impl Expr {
         }
     }
 
-    /// Given two expressions `E` and `L`, where `L` is known to be a Local,
+    /// `E` と `L` から、`L` が `Local` であるってことを確認して、Lambda で
+    /// 以下のように作って:
     ///```pseudo
     ///  let E' = E.abstract(L)
     ///  return (λ L, E')
@@ -587,8 +550,9 @@ impl Expr {
     }
 
 
-    /// Given a list of Local expressions [L_1, L_2, ... L_n] and a body `E : Expr`, 
-    /// use your favorite method (here we use a right fold) and the Lambda constructor to make :
+    /// 与えられた List<Expr>、例えば [L_1, L_2, ... L_n] と `E : Expr` というボディー
+    /// を撮って、Lambda のコンストラクターを繰り返し適用して、以下のような形を作る関数。
+    /// fold_right のような動きです。
     ///```pseudo
     /// (λ  L_1, (λ  L_2, ... (λ  L_n, E)))
     ///
@@ -653,17 +617,11 @@ impl InnerExpr {
 
 
 
-/// Caches an expression's hash digest, number of bound variables, and whether
-/// or not it contains locals. The important part of this is it's calculated
-/// as an expression tree is constructed, where each node's cache captures
-/// the information for itself and for its entire subtree, since IE the hash digest
-/// is the digest of its component nodes, which are in turn the comopsition of THEIR
-/// component nodes, etc. This is extremely important for performance reasons
-/// since we want to do things like use hash tables as caches. If we implemented things
-/// naively, we would be rehashing the entire tree every time we wanted to look a term
-/// up in a cache, and expression trees can get very, very large. Instead we tell
-/// all hash-keyed data structures to (more or less) pull the cache.digest value off
-/// and use that instead.
+/// `Expr` のハッシュ・束縛されている変数の個数・`Local`を保持するかどうかという　
+/// 情報をカッシュするものです。ここでの重要なところは、ハッシュマップがこれを鍵として
+/// 検索・入っている時に、そのカッシュされる値しか見ないでもいいんだ。このハッシュを
+/// カッシュしないと、ハッシュマップで検索する度に、`Expr` の木構造が全体再帰的に
+/// ハッシュされて、パフォーマンスが非常に下がってしまいます。
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct ExprCache {
     digest : u64,
@@ -715,12 +673,12 @@ impl From<&Expr> for Binding {
 }
 
 
-/// Mapping of ((Expr × int) |-> Expr) that says "(expression A at offset B) 
-/// maps to (expression C)". There are multiple ways to do this, 
-/// but this way of doing itturned out to be (much to my surprise, 
-/// shout-outs to @GEbner) faster than (Expr x Int) -> Expr, probably 
-/// due in large part because of how tuples work in Rust. 
 
+/// ((Expr × int) |-> Expr) のマッピングです。
+/// 「 (Expr A at offset B) って (Expr C) へマップされている」
+/// ってことを表す物です。この構造を作る方法が勿論いくつありますが
+/// ラストのタプルを支配する規則のせいで、我が作って測ったやつらから、
+/// こっちが一番早かったです。
 pub struct OffsetCache(Vec<HashMap<Expr, Expr>>);
 
 impl OffsetCache {
@@ -752,13 +710,10 @@ impl OffsetCache {
 
 }
 
-/// For some expression `E`, traverse `E`, putting the `Name` field 
-/// of any constant into a set `S`. This is only used once, when compiling 
-/// a `Definition`; we get all of the names out of an expression's constant terms,
-/// and use them to look up the height of those definitions in the environment. 
-/// There's more information about definition height under tc::def_height().
-/// This isn't defined as an associated method because it wanted more 
-/// detailed lifetime information than could be provided by `self`.   
+/// 与えられた `E : Expr` にある全ての `Name` を `S : Set<Name>` に
+/// 集めてくれる関数です。これは `Definition` をコンパイルする内にしか
+/// 使用されなくて、その `Definition` にある項の height・高さを環境で
+/// 検索するためにあります。tc::def_height でその「高さ」について詳しくよめます。
 pub fn unique_const_names<'l, 's>(n : &'l Expr) -> HashSet<&'l Name> {
     let mut acc = HashSet::with_capacity(80);
     let mut cache = HashSet::with_capacity(200);
@@ -797,13 +752,11 @@ pub fn unique_const_names_core<'l, 's>(n : &'l Expr,
     }
 }
 
-/// Given some expression `E` and a set of levels `S_X`, collect all 
-/// Level::Param elements in `E` into a set `S_E`, and determine whether 
-/// or not `S_E` is a subset of `S_X`. This only gets used once, in 
-/// the process of checking the type field of a `Declaration`, in order 
-/// to ensure that all of the universe parameters being used in some
-/// declaration's type are properly declared in it's separate 
-/// `univ_params` field.
+/// 与えられた `E : Expr` と `S_X : Set<Level>` から、Eから全ての
+/// `Level::Param` 要素を新たな `S_E : Set` に集めて、`S_E ⊆ S_X` 
+/// を確かめる関数です。これは `Declaration` の `type` というフィールドを
+/// 検査する事情だけで使用されます。`Declaration` のユニバース引数は
+/// ちゃんと宣言されているかどうかを確かめてくれます。
 pub fn univ_params_subset<'l, 's>(e : &'l Expr, other : &'s HashSet<&'l Level>) -> bool {
     let mut const_names_in_e = HashSet::with_capacity(40);
     univ_params_subset_core(e, &mut const_names_in_e);
