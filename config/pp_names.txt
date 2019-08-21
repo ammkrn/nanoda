@@ -1,0 +1,6 @@
+# Lines beginning with a hashtag are ignored as comments.
+# Place each definition's name on a new line.
+# Example : to print eq.rec and quot.lift, delete the hash tags in the lines below
+
+#eq.rec
+#quot.lift
