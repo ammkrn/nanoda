@@ -4,7 +4,7 @@
 # an example which specifies the default settings can be seen below :
 
 pp.all false
-pp.implicit true
+pp.implicit false
 pp.notation true
 pp.proofs true
 pp.locals_full_names false
