@@ -357,8 +357,7 @@ impl PrettyPrinter {
             | Pi(..) => {
                 let (binders, instd) = self.parse_binders(e);
                 let new_inner = self.pp_expr(&instd);
-                let new_vec = Vec::from(binders.clone());
-                let new_result = self.pp_binders(new_vec.as_slice(), new_inner);
+                let new_result = self.pp_binders(binders.as_slice(), new_inner);
                 self.restore_lc_names(&binders);
                 new_result
             }
@@ -440,9 +439,7 @@ impl PrettyPrinter {
         let (binders, instd) = self.parse_binders(&declar.ty);
         let doc = {
             let (prms, rst) = take_while_slice(binders.as_slice(), |x| x.is_forall()); 
-            let prms_as_vec = Vec::from(prms.clone());
-            let slice = prms_as_vec.as_slice();
-            let telescoped = self.telescope(Some(self.pp_name(&declar.name)), slice);
+            let telescoped = self.telescope(Some(self.pp_name(&declar.name)), prms);
             let sub_doc_new = self.nest(word_wrap_val(telescoped.into_iter())
                               .concat_plus(":")
                               .concat_line(
