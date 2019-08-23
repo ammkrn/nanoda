@@ -32,6 +32,10 @@ pub mod pretty;
 pub mod cli;
 
 
+#[cfg(feature = "mimalloc")]
+#[global_allocator]
+static GLOBAL: mimallocator::Mimalloc = mimallocator::Mimalloc;
+
 // デフォールトで、`CompiledModification` を保持するためのHashMapは 
 // core +- 2000 個の定義を保持出来るぐらい初期化されます。
 pub const EXPECTED_NUM_MODS : usize = 11_000;
