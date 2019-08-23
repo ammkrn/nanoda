@@ -1,10 +1,14 @@
 [package]
 name = "nanoda"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["ammkrn <ammkrn@tuta.io>"]
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[features]
+mimalloc = []
+default = ["mimalloc"]
 
 [profile.release]
 opt-level=3
@@ -17,3 +21,4 @@ fxhash = "0.2.1"
 hashbrown = "0.3.0"
 parking_lot = "0.9.0"
 structopt = "0.2.18"
+mimallocator = "0.1.3"

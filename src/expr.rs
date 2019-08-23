@@ -199,6 +199,7 @@ impl Expr {
         self.as_ref().get_cache().var_bound
     }
 
+    // !! Partial function !!
     pub fn lc_binding(&self) -> &Binding {
         match self.as_ref() {
             Local(.., binding) => binding,
@@ -206,6 +207,7 @@ impl Expr {
         }
     }
 
+    // !! Partial function !!
     // only used once in the pretty printer.
     pub fn binder_is_pi(&self) -> bool {
         match self.as_ref() {
@@ -330,21 +332,17 @@ impl Expr {
     /// type checker yourself and you want it to be fast, figure out a way
     /// to make these functions efficient.
     pub fn instantiate<'e>(&self, es : impl Iterator<Item = &'e Expr>) -> Expr {
+        // This collect is a little bit of a bummer, but this isn't actually
+        // any slower than cloning the iterator x N in core, and it saves
+        // some visual clutter. If we took a slice, we would need ~4 separate
+        // methods for &[Expr], &[&Expr], and mirrored versions when e is reversed.
         let es = es.collect::<Vec<&Expr>>();
+
+
 
         let mut cache = OffsetCache::new();
         self.instantiate_core(0usize, &es, &mut cache)
     } 
-
-    /// same as instantiate, but searches the vector backwards. This is only here for
-    /// practical reasons since rust's Vec type only allows pushing from one side.
-    //pub fn instantiate_rev<'e>(&self, es : impl Iterator<Item = &'e Expr> + DoubleEndedIterator) -> Expr {
-    //    let es = es.rev().collect::<Vec<&Expr>>();
-    //    let mut cache = OffsetCache::new();
-    //    self.instantiate_core(0usize, &es, &mut cache)
-    //} 
-
-
 
     fn instantiate_core(&self, offset : usize, es : &Vec<&Expr>, cache : &mut OffsetCache) -> Self {
         if self.var_bound() as usize <= offset {
@@ -705,6 +703,7 @@ impl From<InnerExpr> for Expr {
 }
 
 
+// !! Partial function !!
 impl From<&Expr> for Binding {
     fn from(e : &Expr) -> Binding {
         match e.as_ref() {

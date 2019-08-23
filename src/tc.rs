@@ -14,7 +14,8 @@ use crate::errors::*;
 
 /// "A Typechecker" is just a collection of caches and a handle to the current
 /// environment (we only ever need to read from it in this case). 
-/// unsafe_unchecked is unused here since we haven't implemented a pretty printer yet.
+/// unsafe_unchecked should be true iff the TypeChecker will only ever
+/// be used by the pretty printer.
 #[derive(Clone)]
 pub struct TypeChecker {
     unsafe_unchecked: bool,
@@ -292,7 +293,6 @@ impl TypeChecker {
 
     /// Dispatch point for different decision procedures used to determine
     /// whether two expressions are definitionally equal in a certain context.
-    /// Very much an eyesore.
     pub fn check_def_eq_patterns(&mut self, whnfd_1 : &Expr, whnfd_2 : &Expr) -> ShortCircuit {
         let (fn1, apps1) = whnfd_1.unfold_apps_refs();
         let (fn2, apps2) = whnfd_2.unfold_apps_refs();

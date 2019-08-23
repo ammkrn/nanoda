@@ -289,7 +289,7 @@ impl CompiledModification {
         }
     }
 
-    // Checks a given item. 
+    // Checks a given item.
     pub fn check_only(&self, env : &Arc<RwLock<Env>>) {
         match self {
             CompiledAxiomMod(declaration) => {

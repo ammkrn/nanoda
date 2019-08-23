@@ -16,7 +16,6 @@ use crate::parser::LineParser;
 use crate::utils::{ Either::*, RwQueue, ModQueue, CompiledQueue, END_MSG_CHK };
 use crate::cli::{ Opt, pp_bundle };
 
-
 pub mod utils;
 pub mod errors;
 pub mod name;
@@ -31,6 +30,10 @@ pub mod parser;
 pub mod pretty;
 pub mod cli;
 
+
+#[cfg(feature = "mimalloc")]
+#[global_allocator]
+static GLOBAL: mimallocator::Mimalloc = mimallocator::Mimalloc;
 
 // By default, make the 'modifications' hashmap large enough to accomodate
 // core + ~2000 items (core is about 9000 items). If the passed export file
