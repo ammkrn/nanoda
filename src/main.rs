@@ -31,6 +31,9 @@ pub mod parser;
 pub mod pretty;
 pub mod cli;
 
+#[cfg(feature = "mimalloc")]
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 // By default, make the 'modifications' hashmap large enough to accomodate
 // core + ~2000 items (core is about 9000 items). If the passed export file
