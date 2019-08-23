@@ -1,6 +1,6 @@
-# Lines beginning with a hashtag are ignored as comments.
-# Place each definition's name on a new line.
-# Example : to print eq.rec and quot.lift, delete the hash tags in the lines below
+# ハッシュ記号から始まる線はコメントとして無視されます。
+# プリントしたい定義の名前を一行ごとに書いて下さい。
+# 例えば、eq.rec, quot.lift, をプリントしたければ、以下の線の `#` を抜いて。
 
 #eq.rec
 #quot.lift

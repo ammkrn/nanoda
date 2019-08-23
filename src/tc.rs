@@ -14,7 +14,7 @@ use crate::errors::*;
 
 /// TypeChecker は型として見れば、カッシュのまとめと現在使用されている環境
 /// へのハンドルだけです。TypeChecker は環境から読むだけです、書く必要がありません。
-/// unsafe_unchecked はプリティープリンターが使用する値だけです。
+/// unsafe_unchecked はプリティープリンターが使用する値をマークするための物だけです。
 #[derive(Clone)]
 pub struct TypeChecker {
     unsafe_unchecked: bool,

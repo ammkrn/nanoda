@@ -12,7 +12,7 @@ use Either::*;
 use ShortCircuit::*;
 
 ///「仕事終わりました」ってことをワーカースレッドに伝えるためのメッセージです。
-/// 仕事を待っているって状態もあるから、これは別のものとして定義されたんです　。
+/// 仕事を待っている状態もあるから、これは別のものとして定義されたんです　。
 pub const END_MSG_ADD : QueueMsg<Modification> = Right(EndMsg(()));
 pub const END_MSG_NOTATION : QueueMsg<Notation> = Right(EndMsg(()));
 pub const END_MSG_CHK : QueueMsg<CompiledModification> = Right(EndMsg(()));
@@ -75,12 +75,11 @@ pub fn max3(n1 : u16, n2 : u16, n3 : u16) -> u16 {
 
 
 
-/// これは TypeChecker がよく使用するものです。２つの Expr 
-/// の定義的等値性比較を計算することが重く慣れる事情もあるから、
-/// ２つの項が完全に縮小・推論される前に等しいってことが分かってきた
-/// 場合、計算をそのままで中止して、結果を callsite へ返すための
-/// ものです。`Unknown` って「まだ分からないから縮小・推論を続いて」
-/// って言う意味です。
+/// これは TypeChecker がよく使用するものです。def_eq ってかなり
+/// 重い計算になれるので、２つの Expr が可能な限り縮小・推論される前に
+/// 等しさが明るくなった場合、そこで停止して結果を返していきたいんです。
+/// EqShort って「もう等しい」、NeqShortって「もう等しくない」、
+/// Unknown って「まだ分からないから続けよう」ってことを伝えるメッセージです。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ShortCircuit {
     EqShort,
@@ -112,7 +111,7 @@ pub enum Either<L, R> {
     Right(R),
 }
 
-/// ハッシュマップに基づくカッシュ、任意の `e1`と`e2` 表現が与えられたら、
+/// ハッシュマップに基づくカッシュです。任意の `e1`と`e2` Expr が与えられたら、
 /// TypeChecker がそのペアをみたことがあったら、定義的等値性比較の計算
 /// された結果を返してくれる。HashMap<(Expr, Expr), ShortCircuit> の方が
 /// 直感的だと思いますが、そうすれば rust は参照・ポインターだけで鍵を

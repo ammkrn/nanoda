@@ -194,6 +194,7 @@ impl Expr {
         self.as_ref().get_cache().var_bound
     }
 
+    // !! 部分的関数 !!
     pub fn lc_binding(&self) -> &Binding {
         match self.as_ref() {
             Local(.., binding) => binding,
@@ -201,6 +202,7 @@ impl Expr {
         }
     }
 
+    // !! 部分的関数 !!
     // only used once in the pretty printer.
     pub fn binder_is_pi(&self) -> bool {
         match self.as_ref() {
@@ -311,6 +313,8 @@ impl Expr {
     /// Var 対の行動です。Var(n) の `n` がインバウンドってことを確認した後、`es[n]`
     /// を抜き出さずにコピーして、コピーした物を元の Var(n) と交換するように進んでいきます。
     pub fn instantiate<'e>(&self, es : impl Iterator<Item = &'e Expr>) -> Expr {
+        // ここの `collect()` は確かに必要ではないんですが、自分でテストした時に core 
+        // 中イテレータを何回もクローンしていくことのパフォーマンスはだいたい同じだったんです。
         let es = es.collect::<Vec<&Expr>>();
 
         let mut cache = OffsetCache::new();
@@ -663,6 +667,7 @@ impl From<InnerExpr> for Expr {
 }
 
 
+// !! 部分的関数 !! //
 impl From<&Expr> for Binding {
     fn from(e : &Expr) -> Binding {
         match e.as_ref() {

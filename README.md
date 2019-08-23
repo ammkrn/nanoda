@@ -30,9 +30,11 @@ If you'd like to contribute, have ideas for features or documentation, or want t
 
 ### How to use
 
+** As of 0.1.1, [mimalloc](https://github.com/microsoft/mimalloc.git) is the default global allocator, but you can disable this by passing the `--no-default-features` flag when running the executable. Thanks (again) to Sebastian Ullrich for this suggestion.
+
 1. Install cargo (Rust's package manager) if you don't already have it.
 2. Clone this repository.
-3. From this repository's root folder, execute `cargo build --release` (it will be incredibly slow without the release flag, so don't forget that)
+3. From this repository's root folder, execute `cargo build --release` (it will be incredibly slow without the release flag, so don't forget that). 
 4. The built binary will be in /target/release/nanoda, so you can either run it from there (use `./nanoda --help` to see options), or you can run it through cargo, but the syntax is a little weird : `cargo run --release -- <options/flags> <export_files>`. For example `cargo run --release -- --threads 8 --print mathlib_export.out`
 
 ---
@@ -65,6 +67,9 @@ Leonard de Moura, Soonho Kong, Sebastian Ullrich, Gabriel Ebner, Floris van Door
 何かの投稿・日本語の修正・いいアイディア・フィーチャーなどがある方々なら、ぜひご連絡して下さい。
 
 ### 使い方
+
+
+** バージョン0.1.1現在, デフォールトで用いられるアロケーターは[mimalloc](https://github.com/microsoft/mimalloc.git)ですが`--no-default-features`フラグを渡すことでmimallocの代わりにシステムのデフォールトが使える。
 
 1. cargo (ラスト言語のパケージマネジャー)をインストールして下さい。
 2. このリポジトリーをクローンして。
