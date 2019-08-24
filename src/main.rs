@@ -58,10 +58,10 @@ fn main() {
     let mut num_checked = 0usize;
     match opt.num_threads {
         0 | 1 => for s in export_file_strings {
-            check_serial(s, opt.print, &mut num_checked);
+            num_checked += check_serial(s, opt.print);
         }
         owise => for s in export_file_strings {
-            check_parallel(s, owise as usize, opt.print, &mut num_checked)
+            num_checked += check_parallel(s, owise as usize, opt.print)
         }
     }
 
@@ -76,73 +76,71 @@ fn main() {
 }
 
 
-fn check_serial(source : String, print : bool, num_mods : &mut usize) {
+fn check_serial(source : String, print : bool) -> usize {
     let env = Arc::new(RwLock::new(Env::new(EXPECTED_NUM_MODS)));
     let add_queue = RwQueue::with_capacity(EXPECTED_NUM_MODS);
     let check_queue = RwQueue::with_capacity(EXPECTED_NUM_MODS);
 
-    LineParser::parse_all_parallel(source, &add_queue, &env).expect("Parse failure!");
+    if let Err(e) =  LineParser::parse_all(source, &add_queue, &env) {
+        errors::export_file_parse_err(line!(), e)
+    }
+
     loop_add(&add_queue, &check_queue, &env, 1);
     loop_check(&check_queue, &env);
-
-    std::mem::replace(num_mods, *num_mods + env.read().num_mods());
 
     if print {
         pp_bundle(&env);
     }
+
+    let n = env.read().num_declars();
+    n
 }
 
-fn check_parallel(source : String, num_threads : usize, print : bool, num_mods : &mut usize) {
+fn check_parallel(source : String, num_threads : usize, print : bool) -> usize {
     let env = Arc::new(RwLock::new(Env::new(EXPECTED_NUM_MODS)));
     let add_queue = RwQueue::with_capacity(EXPECTED_NUM_MODS);
     let check_queue = RwQueue::with_capacity(EXPECTED_NUM_MODS);
 
-    let sco = thread::scope(|s| {
+    let scope_ = thread::scope(|s| {
 
         let mut thread_holder = Vec::with_capacity(num_threads);
 
-        // add and parse can be done separately, but both MUST be done in order, meaning that
-        // when the parser thread ends, it has to go immediately into the check pool.
-        // loop_add(&add_queue, &check_queue, &env, num_threads);
-        let parser_thread = s.spawn(|_| {
-            LineParser::parse_all_parallel(source, &add_queue, &env).expect("Parse failure!");
+        // add and parse can be done separately/concurrently, but both MUST be done 
+        // in order. So, when parsing ends, that thread goes immediately to
+        // the check pool instead of adding.
+        thread_holder.push(s.spawn(|_| {
+            if let Err(e) =  LineParser::parse_all(source, &add_queue, &env) {
+                errors::export_file_parse_err(line!(), e)
+            }
             loop_check(&check_queue, &env);
-        });
+        }));
 
-        thread_holder.push(parser_thread);
 
-        let adder = s.spawn(|_s| {
+        thread_holder.push(s.spawn(|_s| {
             loop_add(&add_queue, &check_queue, &env, num_threads);
             loop_check(&check_queue, &env);
-        });
+        }));
 
-        thread_holder.push(adder);
-
-        // We spawn (num_threads - 2) here since we've already spawned
-        // a parser thread and an adder thread, both of which will
-        // start looping through the `check` queue when their other 
-        // job is finished
+        // We spawn (num_threads - 2) checker threads here since 
+        // parser and adder will check when they're done.
         for _ in 0..(num_threads - 2) {
-            let checker = s.spawn(|_s| {
+            thread_holder.push(s.spawn(|_s| {
                 loop_check(&check_queue, &env);
-            }); 
-
-            thread_holder.push(checker);
+            })); 
         }
 
     });
 
-    std::mem::replace(num_mods, *num_mods + env.read().num_mods());
+    if scope_.is_err() {
+        errors::scope_err(line!())
+    }
 
     if print {
         pp_bundle(&env);
     }
 
-    match sco {
-        Ok(_) => (),
-        Err(_) => errors::scope_err(line!())
-    }
-
+    let n = env.read().num_declars();
+    n
 }
 
 
@@ -154,12 +152,10 @@ fn check_parallel(source : String, num_threads : usize, print : bool, num_mods :
 pub fn loop_add(add_queue : &ModQueue,
                 check_queue : &CompiledQueue,
                 env : &Arc<RwLock<Env>>,
-                num_threads : usize) -> usize {
-    let mut num_mods = 0usize;
+                num_threads : usize) {
     loop {
         match add_queue.pop() {
             Some(Left(elem)) => {
-                num_mods += 1;
                 let compiled = elem.compile(&env);
                 compiled.add_only(&env);
                 check_queue.push(Left(compiled));
@@ -173,9 +169,6 @@ pub fn loop_add(add_queue : &ModQueue,
             None => continue,
         }
     }
-
-    num_mods
-
 }
 
 // Same as above. Constantly poll for new work, with Left(Compiled)
@@ -185,9 +178,7 @@ pub fn loop_check(check_queue : &CompiledQueue,
                   env : &Arc<RwLock<Env>>) {
     loop {
          match check_queue.pop() {
-             Some(Left(elem)) => {
-                 elem.check_only(&env);
-             },
+             Some(Left(elem)) => elem.check_only(&env),
              Some(Right(_)) => break,
              None => continue
          }

@@ -53,8 +53,6 @@ pub struct Inductive {
     pub base_declaration: Declaration,
 }
 
-
-
 impl Inductive {
     pub fn new(name: Name,
                univ_params: Arc<Vec<Level>>,

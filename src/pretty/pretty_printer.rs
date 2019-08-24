@@ -3,17 +3,12 @@ use std::sync::Arc;
 use hashbrown::HashSet;
 use parking_lot::RwLock;
 
-
 use crate::name::Name;
 use crate::level::{ Level, InnerLevel::* };
 use crate::expr::{ Expr, InnerExpr::*, Binding, BinderStyle };
 use crate::tc::TypeChecker;
 use crate::env::{ Declaration, Env };
 use crate::pretty::components::{ word_wrap_val, Notation, Parenable, Notation::*, Doc, InnerDoc::*, MAX_PRIORITY };
-
-
-
-
 
 // We're using a RefCell since we need the ability to 
 // make mutable borrrows recursively, but we don't need to

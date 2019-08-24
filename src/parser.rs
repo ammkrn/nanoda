@@ -76,7 +76,7 @@ impl<'s> LineParser<'s> {
         self.prop.clone()
     }
 
-    pub fn parse_all_parallel(s : String, queue_handle : &'s ModQueue, env_handle : &'s Arc<RwLock<Env>>) -> ParseResult<()> {
+    pub fn parse_all(s : String, queue_handle : &'s ModQueue, env_handle : &'s Arc<RwLock<Env>>) -> ParseResult<()> {
         let mut parser = LineParser::new(queue_handle, env_handle);
         let mut as_lines = s.lines();
 

@@ -37,7 +37,7 @@ impl TypeChecker {
         TypeChecker {
             unsafe_unchecked : unsafe_unchecked.unwrap_or(false),
             infer_cache : HashMap::with_capacity(1000),
-            eq_cache : EqCache::new(),
+            eq_cache : EqCache::with_capacity(500),
             whnf_cache : HashMap::with_capacity(100),
             reduction_cache : ReductionCache::with_capacity(100),
             env
@@ -290,53 +290,14 @@ impl TypeChecker {
         }
     }
 
-
-    /// Dispatch point for different decision procedures used to determine
-    /// whether two expressions are definitionally equal in a certain context.
-    pub fn check_def_eq_patterns(&mut self, whnfd_1 : &Expr, whnfd_2 : &Expr) -> ShortCircuit {
-        let (fn1, apps1) = whnfd_1.unfold_apps_refs();
-        let (fn2, apps2) = whnfd_2.unfold_apps_refs();
-
-        match (fn1.as_ref(), fn2.as_ref()) {
-            (Sort(_, l1), Sort(_, l2)) => 
-            match apps1.is_empty() && apps2.is_empty() {
-                    true => match Level::eq_by_antisymm(l1, l2) {
-                        true => EqShort,
-                        false => NeqShort,
-                    }
-                    _ => return NeqShort
-            },
-            (Const(_, n1, lvls1), Const(_, n2, lvls2)) => {
-                if n1 == n2 && lvls1.iter().zip(lvls2.as_ref()).all(|(a, b)| Level::eq_by_antisymm(a, b)) {
-                    return self.apps_eq(apps1, apps2)
-                } else {
-                    return NeqShort
-                }
-            },
-            (Local(.., of1), Local(.., of2)) => {
-                if of1 == of2 {
-                    self.apps_eq(apps1, apps2)
-                } else {
-                    NeqShort
-                }
-            },
-            (Lambda(..), Lambda(..)) => self.check_def_eq_lambdas(fn1, fn2),
-            (Lambda(_, dom,  _), _) => {
-                assert!(apps1.is_empty());
-                let app = mk_app(whnfd_2.clone(), mk_var(0));
-                let new_lam = mk_lambda(dom.clone(), app);
-                return self.check_def_eq_core(fn1, &new_lam)
-            },
-            (_, Lambda(_, dom, _)) => {
-                let app = mk_app(whnfd_1.clone(), mk_var(0));
-                let new_lam = mk_lambda(dom.clone(), app);
-                return self.check_def_eq_core(&new_lam, fn2)
-            },
-            (Pi(..), Pi(..)) => self.check_def_eq_pis(fn1, fn2),
-            _ => return NeqShort
-        }
-    }
-
+    /// Main entry point for checking definitional equality of two terms, which 
+    /// dispatches out into a number of different functions. 
+    /// 1. `check_def_eq_core` does some destructuring and reduction to weak head
+    ///     normal form.
+    /// 2. `check_def_eq_patterns` just consults a big list of cases/patterns 
+    ///     to determine which decision procedure it needs to use move forward.
+    /// 3. `patterns` may call `check_def_eq_pi/lambda` to determine whether
+    ///     a pair of Pi or Lambda expressions are definitionally equal.
     pub fn check_def_eq(&mut self, e1 : &Expr, e2 : &Expr) -> ShortCircuit {
         // checks for both pointer and structural equality
         if e1 == e2 {
@@ -358,6 +319,55 @@ impl TypeChecker {
         self.eq_cache.insert(e1.clone(), e2.clone(), result);
         result
     }
+
+
+
+    /// Dispatch point for different decision procedures used to determine
+    /// whether two expressions are definitionally equal in a certain context.
+    pub fn check_def_eq_patterns(&mut self, whnfd_1 : &Expr, whnfd_2 : &Expr) -> ShortCircuit {
+        let (fn1, apps1) = whnfd_1.unfold_apps_refs();
+        let (fn2, apps2) = whnfd_2.unfold_apps_refs();
+
+        match (fn1.as_ref(), fn2.as_ref()) {
+            (Sort(_, l1), Sort(_, l2)) => 
+            match apps1.is_empty() && apps2.is_empty() {
+                    true => match Level::eq_by_antisymm(l1, l2) {
+                        true => EqShort,
+                        false => NeqShort,
+                    }
+                    _ => NeqShort
+            },
+            (Const(_, n1, lvls1), Const(_, n2, lvls2)) => {
+                if n1 == n2 && lvls1.iter().zip(lvls2.as_ref()).all(|(a, b)| Level::eq_by_antisymm(a, b)) {
+                    self.apps_eq(apps1, apps2)
+                } else {
+                    NeqShort
+                }
+            },
+            (Local(.., of1), Local(.., of2)) => {
+                if of1 == of2 {
+                    self.apps_eq(apps1, apps2)
+                } else {
+                    NeqShort
+                }
+            },
+            (Lambda(..), Lambda(..)) => self.check_def_eq_lambdas(fn1, fn2),
+            (Lambda(_, dom,  _), _) => {
+                assert!(apps1.is_empty());
+                let app = mk_app(whnfd_2.clone(), mk_var(0));
+                let new_lam = mk_lambda(dom.clone(), app);
+                self.check_def_eq_core(fn1, &new_lam)
+            },
+            (_, Lambda(_, dom, _)) => {
+                let app = mk_app(whnfd_1.clone(), mk_var(0));
+                let new_lam = mk_lambda(dom.clone(), app);
+                self.check_def_eq_core(&new_lam, fn2)
+            },
+            (Pi(..), Pi(..)) => self.check_def_eq_pis(fn1, fn2),
+            _ => NeqShort
+        }
+    }
+
 
 
     pub fn check_def_eq_core(&mut self, e1_0 : &Expr, e2_0 : &Expr) -> ShortCircuit {
@@ -477,6 +487,7 @@ impl TypeChecker {
             false => NeqShort
         }
     }
+
 
 
     /// Main dispatch point for type inference. Attempts to return early

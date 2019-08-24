@@ -129,6 +129,7 @@ impl Declaration {
         tc.infer_universe_of_type(&self.ty);
     }
 
+
 }
 
 
@@ -206,9 +207,12 @@ impl Env {
         }
     }
 
-    pub fn num_mods(&self) -> usize {
+    pub fn num_declars(&self) -> usize {
         self.declarations.len()
     }
+
+
+
 }
 
 impl Modification {

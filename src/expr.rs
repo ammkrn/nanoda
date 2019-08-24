@@ -113,11 +113,14 @@ pub fn mk_prop() -> Expr {
 }
 
 
+/// Makes a variable expression which contains a 
+/// [De Brujin index](https://en.wikipedia.org/wiki/De_Bruijn_index).
 pub fn mk_var(idx : u64) -> Expr {
     let digest = hash64(&(idx));
     Var(ExprCache::mk(digest, idx as u16 + 1, false), idx).into() // InnerLevel -> Level
 }
 
+/// Makes a node in the tree, joining two expressions as application.
 pub fn mk_app(lhs : Expr, rhs : Expr) -> Expr {
     let digest = hash64(&(lhs.get_digest(), rhs.get_digest()));
     let var_bound = lhs.var_bound().max(rhs.var_bound());
@@ -125,11 +128,15 @@ pub fn mk_app(lhs : Expr, rhs : Expr) -> Expr {
     App(ExprCache::mk(digest, var_bound, has_locals), lhs, rhs).into() // InnerLevel -> Level 
 }
 
+/// Represents a Sort/Level/Universe. You can read more about these in 
+/// sources like Theorem Proving in Lean.
 pub fn mk_sort(level : Level) -> Expr {
     let digest = hash64(&level);
     Sort(ExprCache::mk(digest, 0, false), level).into() // InnerLevel -> Level 
 }
 
+/// A constant; represents a reference to a declaration that has already
+/// been added to the environment.
 pub fn mk_const(name : impl Into<Name>, levels : impl Into<Arc<Vec<Level>>>) -> Expr {
     let name = name.into();
     let levels = levels.into();
@@ -137,6 +144,7 @@ pub fn mk_const(name : impl Into<Name>, levels : impl Into<Arc<Vec<Level>>>) -> 
     Const(ExprCache::mk(digest, 0, false), name, levels).into()
 }
 
+/// A lambda function.
 pub fn mk_lambda(domain : Binding, body: Expr) -> Expr {
     let digest = hash64(&(LAMBDA_HASH, &domain, body.get_digest()));
     let var_bound = max(domain.ty.var_bound(), 
@@ -145,6 +153,7 @@ pub fn mk_lambda(domain : Binding, body: Expr) -> Expr {
     Lambda(ExprCache::mk(digest, var_bound, has_locals), domain, body).into() // InnerLevel -> Level
 }
 
+/// A Pi (dependent function) type.
 pub fn mk_pi(domain : Binding, body: Expr) -> Expr {
     let digest = hash64(&(PI_HASH, &domain, body.get_digest()));
     let var_bound = max(domain.ty.var_bound(),
@@ -153,6 +162,7 @@ pub fn mk_pi(domain : Binding, body: Expr) -> Expr {
     Pi(ExprCache::mk(digest, var_bound, has_locals), domain, body).into() // InnerLevel -> Level
 }
 
+/// A let binding, IE `let (x : nat) := 5  in 2 * x`
 pub fn mk_let(domain : Binding, val : Expr, body : Expr) -> Expr {
     let digest = hash64(&(&domain, val.get_digest(), body.get_digest()));
     let var_bound = max3(domain.ty.var_bound(),
@@ -162,6 +172,12 @@ pub fn mk_let(domain : Binding, val : Expr, body : Expr) -> Expr {
     Let(ExprCache::mk(digest, var_bound, has_locals), domain, val, body).into() // InnerLevel -> Level
 }
 
+/// A `Local` represents a free variable. All `Local` terms have a unique
+/// identifier (here we just use a monotonically increasing counter, with each
+/// local's identifier being called a `serial`), and carries its type around.
+/// As discussed above, locals must have the property that a clone/deep copy
+/// is the only way to produce two local items with the same serial. All other
+/// methods of constructing a local must produce a term with a unique identifier.
 pub fn mk_local(name : impl Into<Name>, ty : Expr, style : BinderStyle) -> Expr {
     let binding = Binding::mk(name.into(), ty, style);
     let serial = LOCAL_SERIAL.fetch_add(1, Relaxed);
@@ -181,7 +197,6 @@ impl Expr {
             _ => false
         }
     }
-
 
     pub fn get_digest(&self) -> u64 {
         self.as_ref().get_cache().digest
@@ -251,9 +266,10 @@ impl Expr {
     }
 
 
-    /// The goal here is to traverse an expression, replacing Local terms with Variables
-    /// where possible, while caching terms we've already performed substitution on. It's
-    /// a relatively generic traversal where we cache expressions to that we 
+    /// The goal here is to traverse an expression, replacing `Local` terms with `Var`
+    /// terms where possible, while caching terms we've already performed 
+    /// substitution on. 
+    /// It's a relatively generic traversal where we cache expressions to that we 
     /// don't have to fully evaluate subtrees if we already know how they evaluate.
     /// The 'interesting' case is when we run across a Local `L` in our tree; we look 
     /// in the collection `lcs` for a term `L'` such that `L' = L`. If there isn't one,
