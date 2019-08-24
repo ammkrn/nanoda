@@ -16,7 +16,6 @@ use crate::parser::LineParser;
 use crate::utils::{ Either::*, RwQueue, ModQueue, CompiledQueue, END_MSG_CHK };
 use crate::cli::{ Opt, pp_bundle };
 
-
 pub mod utils;
 pub mod errors;
 pub mod name;
@@ -37,7 +36,7 @@ pub mod cli;
 static GLOBAL: mimallocator::Mimalloc = mimallocator::Mimalloc;
 
 // デフォールトで、`CompiledModification` を保持するためのHashMapは 
-// core +- 2000 個の定義を保持出来るぐらい初期化されます。
+// core +- 2000 個の定義を保持出来るぐらい初期化されます。.
 pub const EXPECTED_NUM_MODS : usize = 11_000;
 
 fn main() {
@@ -57,10 +56,10 @@ fn main() {
     let mut num_checked = 0usize;
     match opt.num_threads {
         0 | 1 => for s in export_file_strings {
-            check_serial(s, opt.print, &mut num_checked);
+            num_checked += check_serial(s, opt.print);
         }
         owise => for s in export_file_strings {
-            check_parallel(s, owise as usize, opt.print, &mut num_checked)
+            num_checked += check_parallel(s, owise as usize, opt.print)
         }
     }
 
@@ -75,75 +74,75 @@ fn main() {
 }
 
 
-fn check_serial(source : String, print : bool, num_mods : &mut usize) {
+fn check_serial(source : String, print : bool) -> usize {
     let env = Arc::new(RwLock::new(Env::new(EXPECTED_NUM_MODS)));
     let add_queue = RwQueue::with_capacity(EXPECTED_NUM_MODS);
     let check_queue = RwQueue::with_capacity(EXPECTED_NUM_MODS);
 
-    LineParser::parse_all_parallel(source, &add_queue, &env).expect("Parse failure!");
+    if let Err(e) =  LineParser::parse_all(source, &add_queue, &env) {
+        errors::export_file_parse_err(line!(), e)
+    }
+
     loop_add(&add_queue, &check_queue, &env, 1);
     loop_check(&check_queue, &env);
-
-    std::mem::replace(num_mods, *num_mods + env.read().num_mods());
 
     if print {
         pp_bundle(&env);
     }
+
+    let n = env.read().num_declars();
+    n
 }
 
-fn check_parallel(source : String, num_threads : usize, print : bool, num_mods : &mut usize) {
+fn check_parallel(source : String, num_threads : usize, print : bool) -> usize {
     let env = Arc::new(RwLock::new(Env::new(EXPECTED_NUM_MODS)));
     let add_queue = RwQueue::with_capacity(EXPECTED_NUM_MODS);
     let check_queue = RwQueue::with_capacity(EXPECTED_NUM_MODS);
 
-    let sco = thread::scope(|s| {
+    let scope_ = thread::scope(|s| {
 
         let mut thread_holder = Vec::with_capacity(num_threads);
 
         // 並行文脈なら、アイテムをパース・環境に追加することは同時に出来ますが、パーシングと
         // 追加する作業はそれぞれ順序にやられなければならないんだから、自分の一人っ子のスレッド
         // でやられます。パーシングが終了された後、検査キューへ移動してってこと。
-        let parser_thread = s.spawn(|_| {
-            LineParser::parse_all_parallel(source, &add_queue, &env).expect("Parse failure!");
+        thread_holder.push(s.spawn(|_| {
+            if let Err(e) =  LineParser::parse_all(source, &add_queue, &env) {
+                errors::export_file_parse_err(line!(), e)
+            }
             loop_check(&check_queue, &env);
-        });
+        }));
 
-        thread_holder.push(parser_thread);
 
-        let adder = s.spawn(|_s| {
+        thread_holder.push(s.spawn(|_s| {
             loop_add(&add_queue, &check_queue, &env, num_threads);
             loop_check(&check_queue, &env);
-        });
-
-        thread_holder.push(adder);
+        }));
 
         // パーサースレッドも追加するスレッドも既にspawnしたので、ここで num_threads - 2
         // の個数を spawn します。
         for _ in 0..(num_threads - 2) {
-            let checker = s.spawn(|_s| {
+            thread_holder.push(s.spawn(|_s| {
                 loop_check(&check_queue, &env);
-            }); 
-
-            thread_holder.push(checker);
+            })); 
         }
 
     });
 
-    std::mem::replace(num_mods, *num_mods + env.read().num_mods());
+    if scope_.is_err() {
+        errors::scope_err(line!())
+    }
 
     if print {
         pp_bundle(&env);
     }
 
-    match sco {
-        Ok(_) => (),
-        Err(_) => errors::scope_err(line!())
-    }
-
+    let n = env.read().num_declars();
+    n
 }
 
 
-/// `EndMsg` をもらうまで、add_queue をポールして、中身の要素
+/// `Right(..)` をもらうまで、add_queue をポールして、中身の要素
 /// を検査せずに環境へ追加して。キューを枯渇する後、check_queueへ
 /// 言ってってこと。`None` の値がキューから引き出されたら、それって
 /// 「パーサースレッドが要素を入れてくれることを待ってます」っていう
@@ -151,12 +150,10 @@ fn check_parallel(source : String, num_threads : usize, print : bool, num_mods :
 pub fn loop_add(add_queue : &ModQueue,
                 check_queue : &CompiledQueue,
                 env : &Arc<RwLock<Env>>,
-                num_threads : usize) -> usize {
-    let mut num_mods = 0usize;
+                num_threads : usize) {
     loop {
         match add_queue.pop() {
             Some(Left(elem)) => {
-                num_mods += 1;
                 let compiled = elem.compile(&env);
                 compiled.add_only(&env);
                 check_queue.push(Left(compiled));
@@ -170,13 +167,9 @@ pub fn loop_add(add_queue : &ModQueue,
             None => continue,
         }
     }
-
-    num_mods
-
 }
 
-
-///`EndMsg`をもらうまで、キューをポールして、それからの
+/// Right(..)をもらうまで、キューをポールして、それからの
 /// 定義を検査してっていう作業だ。`None` 値って 「add_queue」
 /// が検査すべき要素を入れてくれることを待ってますっていう
 /// メッセージです。
@@ -184,9 +177,7 @@ pub fn loop_check(check_queue : &CompiledQueue,
                   env : &Arc<RwLock<Env>>) {
     loop {
          match check_queue.pop() {
-             Some(Left(elem)) => {
-                 elem.check_only(&env);
-             },
+             Some(Left(elem)) => elem.check_only(&env),
              Some(Right(_)) => break,
              None => continue
          }

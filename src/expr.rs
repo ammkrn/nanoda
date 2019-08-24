@@ -108,11 +108,13 @@ pub fn mk_prop() -> Expr {
 }
 
 
+/// ド・ブラウン・インデックスで表される変数です。
 pub fn mk_var(idx : u64) -> Expr {
     let digest = hash64(&(idx));
     Var(ExprCache::mk(digest, idx as u16 + 1, false), idx).into() // InnerLevel -> Level
 }
 
+/// 木構造の二項ノードを適用で作るコンストラクターです。
 pub fn mk_app(lhs : Expr, rhs : Expr) -> Expr {
     let digest = hash64(&(lhs.get_digest(), rhs.get_digest()));
     let var_bound = lhs.var_bound().max(rhs.var_bound());
@@ -120,11 +122,13 @@ pub fn mk_app(lhs : Expr, rhs : Expr) -> Expr {
     App(ExprCache::mk(digest, var_bound, has_locals), lhs, rhs).into() // InnerLevel -> Level 
 }
 
+/// これはユニバース・ソート・LevelをExprとして表すコンストラクターだけですね。
 pub fn mk_sort(level : Level) -> Expr {
     let digest = hash64(&level);
     Sort(ExprCache::mk(digest, 0, false), level).into() // InnerLevel -> Level 
 }
 
+/// 型検査装置の文脈で、Const（定数)ってことは既に認められているEnv・環境にある物への参照です。
 pub fn mk_const(name : impl Into<Name>, levels : impl Into<Arc<Vec<Level>>>) -> Expr {
     let name = name.into();
     let levels = levels.into();
@@ -132,6 +136,7 @@ pub fn mk_const(name : impl Into<Name>, levels : impl Into<Arc<Vec<Level>>>) -> 
     Const(ExprCache::mk(digest, 0, false), name, levels).into()
 }
 
+/// ラムダ抽象化のコンストラクター
 pub fn mk_lambda(domain : Binding, body: Expr) -> Expr {
     let digest = hash64(&(LAMBDA_HASH, &domain, body.get_digest()));
     let var_bound = max(domain.ty.var_bound(), 
@@ -140,6 +145,7 @@ pub fn mk_lambda(domain : Binding, body: Expr) -> Expr {
     Lambda(ExprCache::mk(digest, var_bound, has_locals), domain, body).into() // InnerLevel -> Level
 }
 
+/// Pi(依存関数)を作るコンストラクター
 pub fn mk_pi(domain : Binding, body: Expr) -> Expr {
     let digest = hash64(&(PI_HASH, &domain, body.get_digest()));
     let var_bound = max(domain.ty.var_bound(),
@@ -148,6 +154,7 @@ pub fn mk_pi(domain : Binding, body: Expr) -> Expr {
     Pi(ExprCache::mk(digest, var_bound, has_locals), domain, body).into() // InnerLevel -> Level
 }
 
+/// これは let 抽象物を作るコンストラクターです。例えば `let (x : nat) := 5 in 2 * x`
 pub fn mk_let(domain : Binding, val : Expr, body : Expr) -> Expr {
     let digest = hash64(&(&domain, val.get_digest(), body.get_digest()));
     let var_bound = max3(domain.ty.var_bound(),
@@ -157,6 +164,8 @@ pub fn mk_let(domain : Binding, val : Expr, body : Expr) -> Expr {
     Let(ExprCache::mk(digest, var_bound, has_locals), domain, val, body).into() // InnerLevel -> Level
 }
 
+/// Local っていうのは自由変数を表す物です。型検査装置で、全てのLocalは自分の型を
+/// 持っているもので、判明するために唯一の通し番号を `serial` として持っています。
 pub fn mk_local(name : impl Into<Name>, ty : Expr, style : BinderStyle) -> Expr {
     let binding = Binding::mk(name.into(), ty, style);
     let serial = LOCAL_SERIAL.fetch_add(1, Relaxed);
@@ -257,6 +266,7 @@ impl Expr {
         }
 
         let mut cache = OffsetCache::new();
+        // あいにくここにもcollectを使ってます。
         let lcs = lcs.collect::<Vec<&Expr>>();
 
         self.abstract_core(0usize, &lcs, &mut cache)
@@ -510,8 +520,8 @@ impl Expr {
     ///               /   \
     ///             L_2   ...
     ///                    Π 
-    ///                  /  \
-    ///                L_n   E
+    ///                  /   \
+    ///                L_n    E
     ///```
     /// same as fold_pis, but generic over iterators.
     pub fn fold_pis<'q, Q>(&self, doms : Q) -> Expr 

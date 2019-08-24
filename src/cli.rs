@@ -139,14 +139,18 @@ pub fn pp_bundle(env : &Arc<RwLock<Env>>) {
     match try_read_pp_file() {
         None => (),
         Some((ns, _)) => {
-            let pp_options = try_read_pp_options();
-            //let mut outputs = Vec::<String>::with_capacity(ns.len());
-            println!("\nBEGIN PRETTY PRINTER OUTPUT : \n");
-            for n in ns.iter() {
-                let rendered = PrettyPrinter::print_declar(pp_options.clone(), n, &env);
-                println!("{}\n", rendered);
+            if ns.is_empty() {
+                println!("\nNo items to pretty print\n");
+            } else {
+                let pp_options = try_read_pp_options();
+                //let mut outputs = Vec::<String>::with_capacity(ns.len());
+                println!("\nBEGIN PRETTY PRINTER OUTPUT : \n");
+                for n in ns.iter() {
+                    let rendered = PrettyPrinter::print_declar(pp_options.clone(), n, &env);
+                    println!("{}\n", rendered);
+                }
+                println!("END PRETTY PRINTER OUTPUT : \n");
             }
-            println!("END PRETTY PRINTER OUTPUT : \n");
         } 
     }
 }

@@ -13,9 +13,9 @@ use ShortCircuit::*;
 
 ///「仕事終わりました」ってことをワーカースレッドに伝えるためのメッセージです。
 /// 仕事を待っている状態もあるから、これは別のものとして定義されたんです　。
-pub const END_MSG_ADD : QueueMsg<Modification> = Right(EndMsg(()));
-pub const END_MSG_NOTATION : QueueMsg<Notation> = Right(EndMsg(()));
-pub const END_MSG_CHK : QueueMsg<CompiledModification> = Right(EndMsg(()));
+pub const END_MSG_ADD : QueueMsg<Modification> = Right(());
+pub const END_MSG_NOTATION : QueueMsg<Notation> = Right(());
+pub const END_MSG_CHK : QueueMsg<CompiledModification> = Right(());
 
 
 pub fn foldr<A, B, I>(f : impl Fn(A, B) -> B, i : I, init : B) -> B 
@@ -122,9 +122,9 @@ pub struct EqCache {
 }
 
 impl EqCache {
-    pub fn new() -> Self {
+    pub fn with_capacity(n : usize) -> Self {
         EqCache {
-            inner : HashMap::with_capacity(500)
+            inner : HashMap::with_capacity(n)
         }
     }
 
@@ -179,14 +179,8 @@ impl<T> RwQueue<T> {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct EndMsg(());
-impl EndMsg {
-    pub fn mk() -> Self { EndMsg(()) }
-}
 
-pub type QueueMsg<T> = Either<T, EndMsg>;
-
+pub type QueueMsg<T> = Either<T, ()>;
 
 pub type ModQueue = RwQueue<QueueMsg<Modification>>;
 pub type CompiledQueue = RwQueue<QueueMsg<CompiledModification>>;

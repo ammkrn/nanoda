@@ -36,7 +36,7 @@ impl TypeChecker {
         TypeChecker {
             unsafe_unchecked : unsafe_unchecked.unwrap_or(false),
             infer_cache : HashMap::with_capacity(1000),
-            eq_cache : EqCache::new(),
+            eq_cache : EqCache::with_capacity(500),
             whnf_cache : HashMap::with_capacity(100),
             reduction_cache : ReductionCache::with_capacity(100),
             env
@@ -281,6 +281,33 @@ impl TypeChecker {
         }
     }
 
+    /// この関数は「定義的等値性」を確かめるためのメインメソッドです。これから生える関数は：
+    /// 1. `check_def_eq_core` : e1 と e2 を取り外してwhnfまで縮小して`check_def_eq_patterns`
+    /// を呼ぶものです。
+    /// 2. `check_def_eq_patterns` : パターン一致で、大きいなケース分析で進む方法を判断する関数。
+    /// 3. `check_def_eq_pis/lambdas` : この２つの関数は列挙型の種類以外全く同じです。Pi/Lambda
+    /// の等値性を確かめるのは他のケースより長たらしい作業だから、自立の関数であります。
+    pub fn check_def_eq(&mut self, e1 : &Expr, e2 : &Expr) -> ShortCircuit {
+        // ポインター等値も構成等値もチェックします。
+        if e1 == e2 {
+            return EqShort
+        } 
+        
+        // この２つのようそって比較したことがあるかどうかをチェックするステップ
+        if let Some(cached) = self.eq_cache.get(&e1, &e2) {
+            return cached
+        }
+        // 比較したことがなければ、結果を計算して、カッシュする後返す。
+        let result = if self.is_proof_irrel_eq(e1, e2) {
+            EqShort
+        } else {
+           self.check_def_eq_core(e1, e2)
+        };
+
+        self.eq_cache.insert(e1.clone(), e2.clone(), result);
+        result
+    }
+
 
     /// ２つの `Expr` が定義的に等しいかどうかを確かめる手続きに用いられる
     /// 長たらしいケース分析。
@@ -328,26 +355,6 @@ impl TypeChecker {
         }
     }
 
-    pub fn check_def_eq(&mut self, e1 : &Expr, e2 : &Expr) -> ShortCircuit {
-        // ポインター等値も構成等値もチェックします。
-        if e1 == e2 {
-            return EqShort
-        } 
-        
-        // この２つのようそって比較したことがあるかどうかをチェックするステップ
-        if let Some(cached) = self.eq_cache.get(&e1, &e2) {
-            return cached
-        }
-        // 比較したことがなければ、結果を計算して、カッシュする後返す。
-        let result = if self.is_proof_irrel_eq(e1, e2) {
-            EqShort
-        } else {
-           self.check_def_eq_core(e1, e2)
-        };
-
-        self.eq_cache.insert(e1.clone(), e2.clone(), result);
-        result
-    }
 
 
     pub fn check_def_eq_core(&mut self, e1_0 : &Expr, e2_0 : &Expr) -> ShortCircuit {
