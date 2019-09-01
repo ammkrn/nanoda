@@ -1,0 +1,1 @@
+Cargo (Rust's package manager) comes with a really amazing tool called [rustdoc](https://doc.rust-lang.org/rustdoc/index.html) that allows authors to write documentation in-line so that it annotates the code it's associated with and lays it out really nicely in the browser. To build this project's docs, go to the project root and execute `cargo doc --open`.

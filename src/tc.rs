@@ -2,6 +2,7 @@
 use std::sync::Arc;
 use hashbrown::HashMap;
 use parking_lot::RwLock;
+use stacker::maybe_grow;
 
 use crate::utils::{ ShortCircuit, ShortCircuit::*, EqCache };
 use crate::name::Name;
@@ -10,6 +11,7 @@ use crate::expr::{ Expr, Binding, InnerExpr::*, mk_app, mk_lambda, mk_var, mk_so
 use crate::reduction::ReductionCache;
 use crate::env::Env;
 use crate::errors::*;
+use Flag::*;
 
 
 /// "A Typechecker" is just a collection of caches and a handle to the current
@@ -149,13 +151,14 @@ impl TypeChecker {
             return cached.clone()
         } else {
             let cache_key = e.clone();
-            let result = self.whnf_core(e, Flag::rho_true());
+            let result = self.whnf_core(e, Some(FlagT));
             self.whnf_cache.insert(cache_key, result.clone());
             result
         }
     }
 
-    pub fn whnf_core(&mut self, e : &Expr, flag : Flag) -> Expr {
+    pub fn whnf_core(&mut self, e : &Expr, _flag : Option<Flag>) -> Expr {
+        let flag = _flag.unwrap_or(FlagT);
         let (_fn, apps) = e.unfold_apps_refs();
 
         match _fn.as_ref() {
@@ -165,17 +168,17 @@ impl TypeChecker {
             },
             Lambda(..) if !apps.is_empty() => {
                 let intermed = self.whnf_lambda(_fn, apps);
-                self.whnf_core(&intermed, flag)
+                self.whnf_core(&intermed, Some(flag))
             },
             Let(.., val, body) => {
                 let instd = body.instantiate(Some(val).into_iter());
                 let applied = instd.fold_apps(apps.into_iter().rev());
-                self.whnf_core(&applied, flag)
+                self.whnf_core(&applied, Some(flag))
             },
             _ => {
-                let reduced = self.reduce_hdtl(_fn, apps.as_slice(), flag);
+                let reduced = self.reduce_hdtl(_fn, apps.as_slice(), Some(flag));
                 match reduced {
-                    Some(eprime) => self.whnf_core(&eprime, flag),
+                    Some(eprime) => self.whnf_core(&eprime, Some(flag)),
                     None => e.clone()
                 }
             }
@@ -203,13 +206,14 @@ impl TypeChecker {
 
     /// The entry point for executing a single reduction step on two
     /// expressions.
-    pub fn reduce_exps(&mut self, e1 : Expr, e2 : Expr, flag : Flag) -> Option<(Expr, Expr)> {
+    pub fn reduce_exps(&mut self, e1 : Expr, e2 : Expr, flag : Option<Flag>) -> Option<(Expr, Expr)> {
+        assert!(flag == Some(FlagT));
         let (fn1, apps1) = e1.unfold_apps_refs();
         let (fn2, apps2) = e2.unfold_apps_refs();
 
         // we want to evaluate these lazily.
         let red1 = |tc : &mut TypeChecker| tc.reduce_hdtl(fn1, apps1.as_slice(), flag).map(|r| (r, e2.clone()));
-        let red2 = |tc : &mut TypeChecker| tc.reduce_hdtl(fn2, apps2.as_slice(), flag).map(|r| (r, e1.clone()));
+        let red2 = |tc : &mut TypeChecker| tc.reduce_hdtl(fn2, apps2.as_slice(), flag).map(|r| (e1.clone(), r));
 
         if self.def_height(fn1) > self.def_height(fn2) {
             red1(self).or(red2(self))
@@ -219,8 +223,9 @@ impl TypeChecker {
     }
 
 
-    pub fn reduce_hdtl(&mut self, _fn : &Expr, apps : &[&Expr], flag : Flag) -> Option<Expr> {
-        if !flag.rho {
+    pub fn reduce_hdtl(&mut self, _fn : &Expr, apps : &[&Expr], flag : Option<Flag>) -> Option<Expr> {
+
+        if let Some(FlagF) = flag {
             return None
         }
 
@@ -280,7 +285,8 @@ impl TypeChecker {
             return NeqShort
         } else {
             for (a, b) in apps1.iter().zip(apps2).rev() {
-                if self.check_def_eq(a, b) == EqShort {
+                let closure = maybe_grow(64 * 1024, 1024 * 1024, || self.check_def_eq(a, b));
+                if closure == EqShort {
                     continue
                 } else {
                     return NeqShort
@@ -371,17 +377,16 @@ impl TypeChecker {
 
 
     pub fn check_def_eq_core(&mut self, e1_0 : &Expr, e2_0 : &Expr) -> ShortCircuit {
-        let flag = Flag { rho : false };
 
-        let whnfd_1 = self.whnf_core(e1_0, flag);
-        let whnfd_2 = self.whnf_core(e2_0, flag);
+        let whnfd_1 = self.whnf_core(e1_0, Some(FlagF));
+        let whnfd_2 = self.whnf_core(e2_0, Some(FlagF));
 
         // consult different patterns laid out in 
         // check_def_eq_patterns to see how to proceed
         match self.check_def_eq_patterns(&whnfd_1, &whnfd_2) {
             EqShort => return EqShort,
             NeqShort => {
-                match self.reduce_exps(whnfd_1, whnfd_2, Flag::rho_true()) {
+                match self.reduce_exps(whnfd_1, whnfd_2, Some(FlagT)) {
                     Some((red1, red2)) => self.check_def_eq_core(&red1, &red2),
                     _ => return NeqShort
                 }
@@ -668,16 +673,9 @@ impl TypeChecker {
 /// affects whether `reduce_hdtl()` proceeds in attempting to reduce 
 /// a constant term.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Flag {
-    pub rho: bool,
+pub enum Flag {
+    FlagT,
+    FlagF
 }
 
-impl Flag {
-    pub fn can_reduce_consts(rho: bool) -> Self {
-        Flag { rho: rho }
-    }
 
-    pub fn rho_true() -> Self {
-        Flag { rho: true }
-    }
-}
