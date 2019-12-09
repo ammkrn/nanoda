@@ -347,7 +347,7 @@ impl Expr {
     /// spanning millions of nodes, so if you're going to implement a 
     /// type checker yourself and you want it to be fast, figure out a way
     /// to make these functions efficient.
-    pub fn instantiate<'e>(&self, es : impl Iterator<Item = &'e Expr>) -> Expr {
+    pub fn instantiate<'e>(&self, es : impl Iterator<Item = &'e Expr> + Clone) -> Expr {
         // This collect is a little bit of a bummer, but this isn't actually
         // any slower than cloning the iterator x N in core, and it saves
         // some visual clutter. If we took a slice, we would need ~4 separate
