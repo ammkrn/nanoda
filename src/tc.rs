@@ -391,7 +391,6 @@ impl TypeChecker {
                     _ => return NeqShort
                 }
             },
-            _ => unreachable!()
         }
     }
 

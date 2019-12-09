@@ -1,0 +1,9 @@
+# the names of the functions you want to trace need to
+# be listed (one per line, lines beginning with a hashtag
+# are ignored as comments) in this file.
+
+# IE
+#check_type
+#infer
+#whnf
+#whnf_core

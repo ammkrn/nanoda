@@ -29,6 +29,7 @@ pub mod inductive;
 pub mod parser;
 pub mod pretty;
 pub mod cli;
+pub mod tracing;
 
 
 #[cfg(feature = "mimalloc")]
@@ -64,6 +65,21 @@ fn main() {
             num_checked += check_parallel(s, owise as usize, opt.print)
         }
     }
+
+    #[cfg(feature = "tracing")] 
+    {
+        use crate::tracing::UNIV_TRACE_ITEMS;
+        use crate::tracing::ItemIdx;
+
+        let univ_len = (*UNIV_TRACE_ITEMS).read().unique_inner.len();
+        let full_fork = crate::tracing::ItemsFork::new();
+        assert_eq!(full_fork.forked_at, univ_len);
+        for (idx, _) in (*UNIV_TRACE_ITEMS).read().unique_inner.iter().enumerate() {
+            println!("{}", full_fork.format_item_declar_by_idx(ItemIdx::UnivIdx(idx)))
+        }
+        println!("\n\n")
+    }
+
 
     match start_instant.elapsed() {
         Ok(dur) => println!("\n### Finished checking {} items in {:?}; to the best \

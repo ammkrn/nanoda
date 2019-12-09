@@ -195,6 +195,11 @@ impl<'s> LineParser<'s> {
             _ => unreachable!("parser line : {}", line!())
         };
 
+        #[cfg(feature = "tracing")]
+        {
+            ((*crate::tracing::UNIV_TRACE_ITEMS)).write().unique_inner.insert(crate::tracing::TraceItem::N(new_name.clone()));
+        }
+
 
         write_elem_strict(&mut self.names, new_name, new_pos)
     }
@@ -209,6 +214,11 @@ impl<'s> LineParser<'s> {
             'P'  => mk_param(self.get_name(ws)?),
             _ => unreachable!("parser line : {}", line!())
         };
+
+        #[cfg(feature = "tracing")]
+        {
+            ((*crate::tracing::UNIV_TRACE_ITEMS)).write().unique_inner.insert(crate::tracing::TraceItem::L(new_level.clone()));
+        }
 
         write_elem_strict(&mut self.levels, new_level, new_pos)
     }
@@ -241,11 +251,17 @@ impl<'s> LineParser<'s> {
                 let body = self.get_expr(ws)?;
                 mk_let(Binding::mk(name, ty, BinderStyle::Default), val, body)
             },
-            otherwise => unreachable!("parser line : {} expectex expression cue, got {:?}", line!(), otherwise)
+            otherwise => unreachable!("parser line : {} expected expression cue, got {:?}", line!(), otherwise)
         };
+
+        #[cfg(feature = "tracing")]
+        {
+            ((*crate::tracing::UNIV_TRACE_ITEMS)).write().unique_inner.insert(crate::tracing::TraceItem::E(new_expr.clone()));
+        }
 
         write_elem_strict(&mut self.exprs, new_expr, new_pos)
     }
+
 
 
     pub fn make_notation(&mut self, kind : &str, line : &str, ws : &mut SplitWhitespace) -> ParseResult<()> {

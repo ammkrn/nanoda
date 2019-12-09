@@ -1,0 +1,10 @@
+# The macros in this crate automatically try to trace
+# function arguments and return types. In some cases, this
+# behavior is not desirable IE for very large types, or types
+# like Env. By placing those types' names in this file,
+# we can tell the tracing macros that we want to ignore those
+# types when they appear in the argument or return position.
+# A list of types we want to avoid is hard coded in the macro,
+# so unless you modify the checker's source code, you shouldn't
+# have to use this file.
+

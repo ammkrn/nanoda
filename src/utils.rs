@@ -88,7 +88,6 @@ pub fn max3(n1 : u16, n2 : u16, n3 : u16) -> u16 {
 pub enum ShortCircuit {
     EqShort,
     NeqShort,
-    Unknown,
 }
 
 impl ShortCircuit {
@@ -105,7 +104,6 @@ pub fn ss_and(ss1 : ShortCircuit, ss2 : ShortCircuit) -> ShortCircuit {
     match ss1 {
         EqShort => ss2,
         NeqShort => NeqShort,
-        Unknown => Unknown
     }
 }
 
@@ -188,3 +186,67 @@ pub type QueueMsg<T> = Either<T, ()>;
 
 pub type ModQueue = RwQueue<QueueMsg<Modification>>;
 pub type CompiledQueue = RwQueue<QueueMsg<CompiledModification>>;
+
+pub fn print_binderstyle(style : &crate::expr::BinderStyle) -> &'static str {
+    match style {
+        crate::expr::BinderStyle::Default => "#BD",
+        crate::expr::BinderStyle::Implicit => "#BI",
+        crate::expr::BinderStyle::InstImplicit => "#BC",
+        crate::expr::BinderStyle::StrictImplicit => "#BS",
+    }
+}
+
+
+pub fn comma_sep_list(iter : impl std::iter::Iterator<Item = String>) -> String {
+    let mut base = String::from("[");
+    for elem in iter {
+        base.push_str(elem.as_str());
+        base.push(',');
+        base.push(' ');
+    }
+
+    if base.len() > 1 {
+        let last_space = base.pop();
+        assert_eq!(last_space, Some(' '));
+        let last_comma = base.pop();
+        assert_eq!(last_comma, Some(','));
+        base.push(']');
+    } else {
+        base.push(']');
+    }
+
+    base
+}
+
+pub fn comma_sep_list_parens(iter : impl std::iter::Iterator<Item = String>) -> String {
+    let mut base = String::from("(");
+    for elem in iter {
+        base.push_str(elem.as_str());
+        base.push(',');
+        base.push(' ');
+    }
+
+    if base.len() > 1 {
+        let last_space = base.pop();
+        assert_eq!(last_space, Some(' '));
+        let last_comma = base.pop();
+        assert_eq!(last_comma, Some(','));
+        base.push(')');
+    } else {
+        base.push(')');
+    }
+    base
+}
+
+pub fn sep_spaces(v : Vec<String>) -> String {
+    let mut base = String::new();
+    for elem in v {
+        base.push_str(elem.as_str());
+        base.push(' ');
+    }
+
+    if base.len() > 1 {
+        assert_eq!(base.pop(), Some(' '));
+    }
+    base
+}

@@ -21,7 +21,7 @@ use CompiledModification::*;
 /// parts of inductive declarations, and parts of 
 /// quotient. See the method `tc::def_height()` for a description
 /// of what height is.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Declaration {
     pub name: Name,
     pub univ_params: Arc<Vec<Level>>,
@@ -147,7 +147,7 @@ impl Declaration {
              items representing its introduction rules, a `Declaration`            
              representing its elimination rule, and a sequence of 
              `ReductionRule`s. */
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum CompiledModification {
     CompiledAxiomMod     (Declaration),
     CompiledDefinition   (Declaration, ReductionRule, Expr, Expr),
