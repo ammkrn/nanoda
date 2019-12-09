@@ -1,8 +1,3 @@
-
-### *** project status (September 30, 2019) ***
-
-I'm taking the LSAT at the end of November and will be using all of my spare time to study for that, so this will be dormant for ~two months until that's over, but I'm really looking forward to doing more work on this. Please feel free to file issues/bug reports as needed.
-
 ## About nanoda
 
 Enormous thanks to Leonard de Moura, Soonho Kong, Sebastian Ullrich, Gabriel Ebner, Floris van Doorn, Mario Carneiro, Kevin Buzzard, Chris Hughes, Patrick Massot, Jeremy Avigad, and Kenny Lau for their combined efforts in creating/documenting Lean, and/or for their willingness to share their knowledge with the unwashed masses on Lean's Zulip.
@@ -42,10 +37,6 @@ If you'd like to contribute, have ideas for features or documentation, or want t
 4. The built binary will be in /target/release/nanoda, so you can either run it from there (use `./nanoda --help` to see options), or you can run it through cargo, but the syntax is a little weird : `cargo run --release -- <options/flags> <export_files>`. For example `cargo run --release -- --threads 8 --print mathlib_export.out`
 
 ---
-
-### *** プロジェクトの状況 (2019年9月30日現在) ***
-
-11月末には LSAT という試験を受けていくのでその時まで勉強すること以上暇時があまりないんです。それに伴って12月の始まりまでこのプロジェクトが進行しないはずですが試験後この開発を再開します。その間にバグなどのことがあったら是非 bug-report/issue を送って下さい。
 
 ## nanoda について
 

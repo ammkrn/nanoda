@@ -350,7 +350,7 @@ impl PrettyPrinter {
             Var(_, idx) => Parenable::new_max(format!("#{}", idx).into()),
             Sort(_, level) => self.pp_sort_core(level),
             Const(_, name, levels) => self.pp_const_core(name, levels.as_ref()),
-            Local(.., of) => self.const_name(&of.pp_name),
+            Local(.., of) => Parenable::new_max(self.pp_name(&of.pp_name)),
             | Lambda(..)
             | Pi(..) => {
                 let (binders, instd) = self.parse_binders(e);
@@ -364,6 +364,7 @@ impl PrettyPrinter {
         }
 
     }
+
 
 
     pub fn restore_lc_names(&self, binders : &Vec<ParsedBinder>) {
