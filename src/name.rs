@@ -16,8 +16,8 @@ pub struct Name(Arc<InnerName>);
 #[derive(Debug, Clone, PartialEq, PartialOrd, Ord, Eq, Hash)]
 pub enum InnerName {
     Anon,
-    Str(Name, String),
-    Num(Name, u64),
+    Str { pfx : Name, hd : String },
+    Num { pfx : Name, hd : u64 },
 }
 
 pub fn mk_anon() -> Name {
@@ -28,22 +28,19 @@ impl Name {
 
     pub fn is_anon(&self) -> bool {
         match self {
-            Name(x) => match x.as_ref() {
-                Anon => true,
-                _ => false
-            }
+            Name(inner) => inner.as_ref() == &Anon
         }
     }
 
 
     /// Extend some hierarchical name with a string. IE `nat` => `nat.rec`
     pub fn extend_str(&self, hd : &str) -> Self {
-        Str(self.clone(), String::from(hd)).into()    // InnerName -> Name
+        Name::from(Str { pfx : self.clone(), hd : String::from(hd) }) // InnerName -> Name
     }
 
     /// Extend some hierarchical name with an integer. IE `prod` => `prod.3`
     pub fn extend_num(&self, hd : u64) -> Self {
-        Num(self.clone(), hd).into()                  // InnerName -> Name
+        Name::from(Num { pfx : self.clone(), hd : hd }) // InnerName -> Name
     }
 
 
@@ -107,32 +104,9 @@ impl From<&str> for Name {
 impl std::fmt::Debug for Name {
     fn fmt(&self, f : &mut std::fmt::Formatter) -> std::fmt::Result {
         match self.as_ref() {
-            Anon => write!(f, ""),
-            Str(pfx, hd) => match pfx.as_ref() {
-                Anon     => write!(f, "{}", hd),
-                owise        => write!(f, "{}.{}", owise, hd)
-            },
-            Num(pfx, hd) => match pfx.as_ref() {
-                Anon     => write!(f, "{}", hd),
-                owise        => write!(f, "{}.{}", owise, hd)
-            }
-        }
-    }
-}
-
-
-impl std::fmt::Display for Name {
-    fn fmt(&self, f : &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self.as_ref() {
-            Anon => write!(f, ""),
-            Str(pfx, hd) => match pfx.as_ref() {
-                Anon     => write!(f, "{}", hd),
-                owise        => write!(f, "{}.{}", owise, hd)
-            },
-            Num(pfx, hd) => match pfx.as_ref() {
-                Anon     => write!(f, "{}", hd),
-                owise        => write!(f, "{}.{}", owise, hd)
-            }
+            Anon => write!(f, "Anon"),
+            Str { pfx, hd } => write!(f, "{:?} :: {:?}", pfx, hd),
+            Num { pfx, hd } => write!(f, "{:?} :: {:?}", pfx, hd),
         }
     }
 }
@@ -142,14 +116,20 @@ impl std::fmt::Display for InnerName {
     fn fmt(&self, f : &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
             Anon => write!(f, ""),
-            Str(pfx, hd) => match pfx.as_ref() {
+            Str { pfx, hd } => match pfx.as_ref() {
                 Anon     => write!(f, "{}", hd),
                 owise        => write!(f, "{}.{}", owise, hd)
             },
-            Num(pfx, hd) => match pfx.as_ref() {
+            Num { pfx, hd } => match pfx.as_ref() {
                 Anon     => write!(f, "{}", hd),
                 owise        => write!(f, "{}.{}", owise, hd)
             }
         }
+    }
+}
+
+impl std::fmt::Display for Name {
+    fn fmt(&self, f : &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.as_ref())
     }
 }

@@ -279,62 +279,56 @@ impl Expr {
     /// `offset` is used to mark the transition from one binder's scope into another;
     /// you can see that it only increments as we recurse into the body of a binder
     /// (Lambda, Pi, or Let term).
-    pub fn abstract_<'e>(&self, lcs : impl Iterator<Item = &'e Expr>) -> Expr {
+    pub fn abstract_<'e>(&self, lcs : impl Iterator<Item = &'e Expr> + Clone) -> Expr {
         if !self.has_locals() {
-            return self.clone() 
-        }
-
-        let mut cache = OffsetCache::new();
-        let lcs = lcs.collect::<Vec<&Expr>>();
-
-        self.abstract_core(0usize, &lcs, &mut cache)
-    }
-
-    fn abstract_core(&self, offset : usize, locals : &Vec<&Expr>, cache : &mut OffsetCache) -> Expr {
-        if !self.has_locals() {
-            return self.clone()
-        } else if let Some(cached) = cache.get(&self, offset) {
-            return cached.clone()
-        } else if let Local(_, serial, _) = self.as_ref() {
-            locals.iter()
-            .position(|lc| lc.get_serial() == *serial)
-            .map_or_else(|| self.clone(), |position| {
-                mk_var((position + offset) as u64)
-            })
+            self.clone() 
         } else {
-
-            let cache_key = self.clone();
-
-            let result = match self.as_ref() {
-                App(_, lhs, rhs) => {
-                    let new_lhs = lhs.abstract_core(offset, locals, cache);
-                    let new_rhs = rhs.abstract_core(offset, locals, cache);
-                    mk_app(new_lhs, new_rhs)
-                },
-                Lambda(_, dom, body) => {
-                    let new_domty = dom.ty.abstract_core(offset, locals, cache);
-                    let new_body = body.abstract_core(offset + 1, locals, cache);
-                    mk_lambda(dom.swap_ty(new_domty), new_body)
-                }
-                Pi(_, dom, body) => {
-                    let new_domty = dom.ty.abstract_core(offset, locals, cache);
-                    let new_body = body.abstract_core(offset + 1, locals, cache);
-                    mk_pi(dom.swap_ty(new_domty), new_body)
-                },
-                Let(_, dom, val, body) => {
-                    let new_domty = dom.ty.abstract_core(offset, locals, cache);
-                    let new_val = val.abstract_core(offset, locals, cache);
-                    let new_body = body.abstract_core(offset + 1, locals, cache);
-                    mk_let(dom.swap_ty(new_domty), new_val, new_body)
-                },
-                owise => unreachable!("Illegal match item in Expr::abstract_core {:?}\n", owise)
-            };
-
-            cache.insert(cache_key, result.clone(), offset);
-            result
+            let mut cache = OffsetCache::new();
+            self.abstract_core(0usize, lcs.clone(), &mut cache)
         }
     }
 
+    fn abstract_core<'e>(&self, offset : usize, locals : impl Iterator<Item = &'e Expr> + Clone, cache : &mut OffsetCache) -> Expr {
+        if !self.has_locals() {
+            self.clone()
+        } else if let Local(_, serial, _) = self.as_ref() {
+            locals.clone()
+                  .position(|lc| lc.get_serial() == *serial)
+                  .map_or_else(|| self.clone(), |position| {
+                      mk_var((position + offset) as u64)
+                   })
+        } else {
+            cache.get(self, offset).cloned().unwrap_or_else(|| {
+                let result = match self.as_ref() {
+                    App(_, lhs, rhs) => {
+                        let new_lhs = lhs.abstract_core(offset, locals.clone(), cache);
+                        let new_rhs = rhs.abstract_core(offset, locals, cache);
+                        mk_app(new_lhs, new_rhs)
+                    },
+                    Lambda(_, dom, body) => {
+                        let new_domty = dom.ty.abstract_core(offset, locals.clone(), cache);
+                        let new_body = body.abstract_core(offset + 1, locals, cache);
+                        mk_lambda(dom.swap_ty(new_domty), new_body)
+                    }
+                    Pi(_, dom, body) => {
+                        let new_domty = dom.ty.abstract_core(offset, locals.clone(), cache);
+                        let new_body = body.abstract_core(offset + 1, locals, cache);
+                        mk_pi(dom.swap_ty(new_domty), new_body)
+                    },
+                    Let(_, dom, val, body) => {
+                        let new_domty = dom.ty.abstract_core(offset, locals.clone(), cache);
+                        let new_val = val.abstract_core(offset, locals.clone(), cache);
+                        let new_body = body.abstract_core(offset + 1, locals, cache);
+                        mk_let(dom.swap_ty(new_domty), new_val, new_body)
+                    },
+                    owise => unreachable!("Illegal match item in Expr::abstract_core {:?}\n", owise)
+                };
+
+                cache.insert(self.clone(), result.clone(), offset);
+                result
+            })
+        }
+    }
 
     /// Similar shape to abstract; we traverse an expression, but this time we want
     /// to substitute variables for other expressions, stil carrying a cache and
@@ -347,68 +341,59 @@ impl Expr {
     /// spanning millions of nodes, so if you're going to implement a 
     /// type checker yourself and you want it to be fast, figure out a way
     /// to make these functions efficient.
-    pub fn instantiate<'e>(&self, es : impl Iterator<Item = &'e Expr>) -> Expr {
-        // This collect is a little bit of a bummer, but this isn't actually
-        // any slower than cloning the iterator x N in core, and it saves
-        // some visual clutter. If we took a slice, we would need ~4 separate
-        // methods for &[Expr], &[&Expr], and mirrored versions when e is reversed.
-        let es = es.collect::<Vec<&Expr>>();
-
-
-
-        let mut cache = OffsetCache::new();
-        self.instantiate_core(0usize, &es, &mut cache)
+    pub fn instantiate<'e>(&self, es : impl Iterator<Item = &'e Expr> + Clone) -> Expr {
+        if self.var_bound() as usize == 0 {
+            self.clone()
+        } else {
+            let mut cache = OffsetCache::new();
+            self.instantiate_core(0usize, es.clone(), &mut cache)
+        }
     } 
 
-    fn instantiate_core(&self, offset : usize, es : &Vec<&Expr>, cache : &mut OffsetCache) -> Self {
+    // The way 'offset' works is that it pushes the index further left
+    // in the vec it's indexing. Or you can think of it as pushing `None` values
+    // onto the left of the collection, so an offset of 3 would become :
+    // [None, None, None, e1, e2, e3, e4, e5]
+    //   0     1     2    3   4   5   6   7
+    fn instantiate_core<'e>(&self, offset : usize, es : impl Iterator<Item = &'e Expr> + Clone, cache : &mut OffsetCache) -> Self {
         if self.var_bound() as usize <= offset {
             return self.clone()
-        } else if let Some(cached) = cache.get(&self, offset) {
-            return cached.clone()
         } else if let Var(_, idx_) = self.as_ref() {
-            let idx = *idx_ as usize;
-
-            if offset <= idx && idx < (offset + es.len()) {
-                es[idx - offset].clone()
-            } else {
-                return self.clone()
-            }
+            es.clone()
+              .nth((*idx_ as usize) - offset)
+              .cloned()
+              .unwrap_or_else(|| self.clone())
         } else {
-
-            let cache_key = self.clone();
-
-            let result = match self.as_ref()  {
-                App(_, lhs, rhs) => {
-                    let new_lhs = lhs.instantiate_core(offset, es, cache);
-                    let new_rhs = rhs.instantiate_core(offset, es, cache);
-                    mk_app(new_lhs, new_rhs)
-                },
-                | Lambda(_, dom, body) => {
-                    let new_dom_ty = dom.ty.instantiate_core(offset, es, cache);
-                    let new_body = body.instantiate_core(offset + 1, es, cache);
-                    mk_lambda(dom.swap_ty(new_dom_ty), new_body)
-                }
-                | Pi(_, dom, body) => {
-                    let new_dom_ty = dom.ty.instantiate_core(offset, es, cache);
-                    let new_body = body.instantiate_core(offset + 1, es, cache);
-                    mk_pi(dom.swap_ty(new_dom_ty), new_body)
-                },
-                Let(_, dom, val, body) => {
-                    let new_dom_ty = dom.ty.instantiate_core(offset, es, cache);
-                    let new_val = val.instantiate_core(offset, es, cache);
-                    let new_body = body.instantiate_core(offset + 1, es, cache);
-                    mk_let(dom.swap_ty(new_dom_ty), new_val, new_body)
-                },
-                owise => unreachable!("Illegal match result in Expr::instantiate_core {:?}\n", owise)
-            };
-
-            cache.insert(cache_key, result.clone(), offset);
-
-            result
-
+            cache.get(&self, offset).cloned().unwrap_or_else(|| {
+                let calcd = match self.as_ref() {
+                    App(_, lhs, rhs) => {
+                        let new_lhs = lhs.instantiate_core(offset, es.clone(), cache);
+                        let new_rhs = rhs.instantiate_core(offset, es, cache);
+                        mk_app(new_lhs, new_rhs)
+                    },
+                    | Lambda(_, dom, body) => {
+                        let new_dom_ty = dom.ty.instantiate_core(offset, es.clone(), cache);
+                        let new_body = body.instantiate_core(offset + 1, es, cache);
+                        mk_lambda(dom.swap_ty(new_dom_ty), new_body)
+                    }
+                    | Pi(_, dom, body) => {
+                        let new_dom_ty = dom.ty.instantiate_core(offset, es.clone(), cache);
+                        let new_body = body.instantiate_core(offset + 1, es, cache);
+                        mk_pi(dom.swap_ty(new_dom_ty), new_body)
+                    },
+                    Let(_, dom, val, body) => {
+                        let new_dom_ty = dom.ty.instantiate_core(offset, es.clone(), cache);
+                        let new_val = val.instantiate_core(offset, es.clone(), cache);
+                        let new_body = body.instantiate_core(offset + 1, es, cache);
+                        mk_let(dom.swap_ty(new_dom_ty), new_val, new_body)
+                    },
+                    owise => unreachable!("Illegal match result in Expr::instantiate_core {:?}\n", owise)
+                };
+                cache.insert(self.clone(), calcd.clone(), offset);
+                calcd
+            })
         }
     }
-
     /// This just performs variable substitution by going through
     /// the `Level` items contained in `Sort` and `Const` expressions.
     /// For all levels therein, attempts to replace `Level::Param`
