@@ -7,7 +7,7 @@ use crate::name::Name;
 use crate::level::{ Level, InnerLevel::* };
 use crate::expr::{ Expr, InnerExpr::*, Binding, BinderStyle };
 use crate::tc::TypeChecker;
-use crate::env::{ Declaration, Env };
+use crate::env::{ Env, DeclarationKind };
 use crate::pretty::components::{ word_wrap_val, Notation, Parenable, Notation::*, Doc, InnerDoc::*, MAX_PRIORITY };
 
 // We're using a RefCell since we need the ability to 
@@ -32,7 +32,12 @@ impl PrettyPrinter {
     }
 
     pub fn lookup_notation(&self, name : &Name) -> Option<Notation> {
-        self.tc.borrow().env.read().notations.get(name).cloned()
+        match self.tc.borrow().env.read().notations.get(name).cloned() {
+            None => {
+                None
+            }
+            Some(x) => Some(x)
+        }
     }
 
     pub fn nest(&self, doc : Doc) -> Doc {
@@ -77,7 +82,7 @@ impl PrettyPrinter {
 
     pub fn already_used(&self, n : &Name) -> bool {
         self.used_lcs.borrow().contains(n) 
-        || self.tc.borrow().env.read().declarations.get(n).is_some()
+        || self.tc.borrow().env.read().new_declarations.get(n).is_some()
     }
 
 
@@ -128,9 +133,9 @@ impl PrettyPrinter {
     }
 
     pub fn is_implicit(&self, fun : &Expr) -> bool {
-        let inferred = self.tc.borrow_mut().infer(fun);
+        let inferred = self.tc.borrow_mut().infer_type(fun);
         match self.tc.borrow_mut().whnf(&inferred).as_ref() {
-            Pi(_, dom, _) => dom.style != BinderStyle::Default,
+            Pi { binder : dom, .. } => dom.style != BinderStyle::Default,
             _ => false
         }
     }
@@ -231,11 +236,15 @@ impl PrettyPrinter {
         }
     }
 
+    pub fn const_name_local(&self, n : &Name) -> Parenable {
+            Parenable::new_max(self.pp_name(n))
+    }
+
     pub fn pp_app_core(&self, e : &Expr) -> Parenable {
         let mut apps = Vec::new();
         let mut acc = e;
 
-        while let App(_, lhs, rhs) = acc.as_ref() {
+        while let App { fun : lhs, arg : rhs, .. } = acc.as_ref() {
             if !self.pp_options.implicit && self.is_implicit(lhs) {
                 acc = lhs;
             } else {
@@ -246,7 +255,7 @@ impl PrettyPrinter {
 
         match acc.as_ref() {
             _ if apps.is_empty() => self.pp_expr(acc),
-            Const(_, name, _) if self.pp_options.notation => {
+            Const { name, .. } if self.pp_options.notation => {
                 match self.lookup_notation(name) {
                     Some(Prefix(_, ref prio, ref op)) if apps.len() == 1 => {
                         let z = &apps[apps.len() - 1];
@@ -300,7 +309,7 @@ impl PrettyPrinter {
     }
 
     pub fn pp_const_core(&self, name : &Name, levels : &Vec<Level>) -> Parenable {
-        if self.tc.borrow().env.read().declarations.get(name).is_some() {
+        if self.tc.borrow().env.read().new_declarations.get(name).is_some() {
             self.const_name(name)
         } else {
             let uparams = if levels.is_empty() {
@@ -339,28 +348,34 @@ impl PrettyPrinter {
     }
 
     pub fn pp_expr(&self, e : &Expr) -> Parenable {
-        if !self.pp_options.proofs && self.tc.borrow_mut().is_proof(e) {
+        // REVISIT is proof -> is_prop() correct?
+        //if !self.pp_options.proofs && self.tc.borrow_mut().is_proof(e) {
+        if !self.pp_options.proofs && self.tc.borrow_mut().is_prop(e) {
             return Parenable::new_max("_".into())
         }
 
         match e.as_ref() {
-            Var(_, idx) => Parenable::new_max(format!("#{}", idx).into()),
-            Sort(_, level) => self.pp_sort_core(level),
-            Const(_, name, levels) => self.pp_const_core(name, levels.as_ref()),
-            Local(.., of) => Parenable::new_max(self.pp_name(&of.pp_name)),
-            | Lambda(..)
-            | Pi(..) => {
+            Var { dbj : idx, .. } => Parenable::new_max(format!("#{}", idx).into()),
+            Sort { level, .. } => self.pp_sort_core(level),
+            Const { name, levels, .. } => self.pp_const_core(name, levels.as_ref()),
+           // Local(.., of, .. } => self.const_name_local(&of.pp_name),
+
+            Local { binder : of, .. } => Parenable::new_max(self.pp_name(&of.pp_name)),
+
+            | Lambda {..}
+            | Pi { .. } => {
                 let (binders, instd) = self.parse_binders(e);
                 let new_inner = self.pp_expr(&instd);
                 let new_result = self.pp_binders(binders.as_slice(), new_inner);
                 self.restore_lc_names(&binders);
                 new_result
             }
-            Let(_, dom, val, body) => self.pp_let_core(dom, val, body),
-            App(..) => self.pp_app_core(e)
+            Let { binder : dom, val, body, .. } => self.pp_let_core(dom, val, body),
+            App { .. } => self.pp_app_core(e)
         }
 
     }
+
 
     pub fn restore_lc_names(&self, binders : &Vec<ParsedBinder>) {
         for elem in binders.into_iter().rev() {
@@ -368,16 +383,23 @@ impl PrettyPrinter {
         }
     }
 
-    pub fn get_ups(&self, declar : &Declaration) -> Doc {
-        match declar.univ_params.as_ref() {
-            v if v.is_empty() => Doc::from(""),
-            v => Doc::from(" ").concat(self.pp_levels(v))
+    pub fn get_ups(&self, declar : &DeclarationKind) -> Doc {
+        let v = declar.get_lparams();
+        if v.is_empty() {
+            Doc::from("")
+        } else {
+            Doc::from(" ").concat(self.pp_levels(&v))
         }
+        //match declar.get_lparams() {
+        //    v if v.is_empty() => Doc::from(""),
+        //    v => Doc::from(" ").concat(self.pp_levels(&v))
+        //}
     }
 
 
-    pub fn main_def(&self, declar : &Declaration, val : Expr) -> Doc {
-        let (binders, ty) = self.parse_binders(&declar.ty);
+    pub fn main_def(&self, declar : &DeclarationKind, val : Expr) -> Doc {
+        //let (binders, ty) = self.parse_binders(&(declar.get_types())[0]);
+        let (binders, ty) = self.parse_binders(&(declar.get_type()));
 
         // inlined parse_params
         let mut slice_split_idx = 0usize;
@@ -388,7 +410,7 @@ impl PrettyPrinter {
         // 3. is_forall(popped element) == false
         for elem in binders.iter() {
             match val_acc.as_ref() {
-                Lambda(.., inner_val) if elem.is_forall() => {
+                Lambda { body : inner_val, .. } if elem.is_forall() => {
                     slice_split_idx += 1;
                     val_acc = inner_val;
                 },
@@ -399,7 +421,8 @@ impl PrettyPrinter {
         let instd = val_acc.instantiate(params_slice.into_iter().rev().map(|x| &x.lc));
         // end inlined
 
-        let is_prop = self.tc.borrow_mut().is_proposition(&declar.ty);
+        //let is_prop = self.tc.borrow_mut().is_prop(&declar.get_types()[0]);
+        let is_prop = self.tc.borrow_mut().is_prop(&declar.get_type());
         let cmd = match is_prop {
             true => "lemma",
             false => "def"
@@ -411,7 +434,7 @@ impl PrettyPrinter {
         };
 
 
-        let new_telescoped = self.telescope(Some(self.pp_name(&declar.name)), params_slice);
+        let new_telescoped = self.telescope(Some(self.pp_name(&declar.get_name())), params_slice);
 
         let sub_doc_new = self.nest(word_wrap_val(new_telescoped.into_iter()))
                           .concat_plus(":")
@@ -429,11 +452,12 @@ impl PrettyPrinter {
     }
 
 
-    pub fn main_axiom(&self, declar : &Declaration) -> Doc {
-        let (binders, instd) = self.parse_binders(&declar.ty);
+    pub fn main_axiom(&self, declar : &DeclarationKind) -> Doc {
+        //let (binders, instd) = self.parse_binders(&declar.get_types()[0]);
+        let (binders, instd) = self.parse_binders(&declar.get_type());
         let doc = {
             let (prms, rst) = take_while_slice(binders.as_slice(), |x| x.is_forall()); 
-            let telescoped = self.telescope(Some(self.pp_name(&declar.name)), prms);
+            let telescoped = self.telescope(Some(self.pp_name(&declar.get_name())), prms);
             let sub_doc_new = self.nest(word_wrap_val(telescoped.into_iter())
                               .concat_plus(":")
                               .concat_line(
@@ -444,35 +468,39 @@ impl PrettyPrinter {
                               .concat(Doc::line())
         };
         self.restore_lc_names(&binders);
-        match declar.builtin {
-            true => Doc::from("/- builtin -/").concat_plus(doc),
-            false => doc
-        }
+        doc
+
+        // FIXME
+        //match declar.builtin {
+        //    true => Doc::from("/- builtin -/").concat_plus(doc),
+        //    false => doc
+        //}
     }
 
-    pub fn pp_main(&self, declar : &Declaration) -> Doc {
-
+    pub fn pp_main(&self, declar : &DeclarationKind) -> Doc {
         let env_result = self.tc.borrow()
                                 .env
                                 .read()
-                                .get_value(&declar.name)
-                                .cloned();
+                                .new_declarations
+                                .get(&declar.get_name())
+                                .map(|x| x.get_type());
+                                //.get_value(&declar.get_name())
         match env_result {
             // definition/lemma branch
-            Some(val) => self.main_def(declar, val.clone()),
+            Some(val) => self.main_def(declar, val),
             // axiom branch
             None => self.main_axiom(declar)
         }
 
     }
 
-    pub fn render_expr(&self, e : &Expr) -> String {
+    pub fn render_expr2(&self, e : &Expr) -> String {
         self.pp_expr(e).doc.group().render(80)
     }
 
 
     pub fn print_declar(options : Option<PPOptions>, n : &Name, env : &Arc<RwLock<Env>>) -> String {
-        let declar = match env.read().declarations.get(n) {
+        let declar = match env.read().new_declarations.get(n) {
             Some(d) => d.clone(),
             None => return String::new()
         };
@@ -488,8 +516,8 @@ impl PrettyPrinter {
         let mut acc = e;
         let mut ctx = Vec::<ParsedBinder>::new();
 
-        while let | Pi(_, dom, body) 
-                  | Lambda(_, dom, body) = acc.as_ref() {
+        while let | Pi { binder : dom, body, .. } 
+                  | Lambda { binder : dom, body, .. } = acc.as_ref() {
             let new_name = self.fresh_name(&dom.pp_name);
             let new_ty = dom.ty.instantiate(ctx.iter().rev().map(|x| &x.lc));
             let new_dom = Binding::mk(new_name, new_ty, dom.style);
@@ -559,16 +587,16 @@ impl ParsedBinder {
 }
 
 
-pub fn has_var(e : &Expr, i : u64) -> bool {
-    if e.var_bound() as u64 <= i {
+pub fn has_var(e : &Expr, i : usize) -> bool {
+    if e.var_bound() as usize <= i {
         return false
     }
     match e.as_ref() {
-        Var(_, idx) => *idx == i,
-        App(_, a, b) => has_var(a, i) || has_var(b, i),
-        Lambda(_, dom, body) => has_var(&dom.ty, i) || has_var(body, i + 1),
-        Pi(_, dom, body) => has_var(&dom.ty, i) || has_var(body, i + 1),
-        Let(_, dom, val, body) => has_var(&dom.ty, i) || has_var(val, i) || has_var(body, i + 1),
+        Var { dbj, .. } => *dbj == i,
+        App { fun : a, arg : b, .. } => has_var(a, i) || has_var(b, i),
+        Lambda { binder, body, .. } => has_var(&binder.ty, i) || has_var(body, i + 1),
+        Pi { binder, body, .. } => has_var(&binder.ty, i) || has_var(body, i + 1),
+        Let { binder, val, body, .. } => has_var(&binder.ty, i) || has_var(val, i) || has_var(body, i + 1),
         _ => unreachable!()
     }
 }
@@ -584,7 +612,7 @@ pub fn take_while_slice<T>(s : &[T], f : impl Fn(&T) -> bool) -> (&[T], &[T]) {
 }
 
 pub fn render_expr(e : &Expr, env : &Arc<RwLock<Env>>) -> String {
-    let pp = PrettyPrinter::new(None, env);
+    let pp = PrettyPrinter::new(Some(PPOptions::new_default()), env);
     pp.pp_expr(e)
       .doc
       .group()
@@ -611,8 +639,20 @@ impl PPOptions {
             notation : false,
             proofs : false,
             locals_full_names : false,
-            indent : 0usize,
-            width : 0usize
+            indent : 2usize,
+            width : 80usize
+        }
+    }
+
+    pub fn new_all() -> Self {
+        PPOptions {
+            all : true,
+            implicit : true,
+            notation : true,
+            proofs : true,
+            locals_full_names : false,
+            indent : 2usize,
+            width : 80usize
         }
     }
 

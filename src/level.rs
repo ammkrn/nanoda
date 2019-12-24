@@ -6,6 +6,8 @@ use crate::errors;
 
 use InnerLevel::*;
 
+
+
 /// `Level` and `InnerLevel` together represent Lean's Sort/Universe level terms.
 /// Structurally, they're just trees, with `Level` acting as a reference counted
 /// wrapper around `InnerLevel`. Zero and Param values are always leaves;
@@ -55,6 +57,10 @@ pub fn mk_succ(l : Level) -> Level {
     Level(Arc::new(Succ(l)))
 }
 
+pub fn is_def_eq_lvls(lhs : &Vec<Level>, rhs : &Vec<Level>) -> bool {
+    lhs.iter().zip(rhs.iter()).all(|(l, r)| l.eq_by_antisymm(r))
+}
+
 impl Level {
     pub fn get_param_name(&self) -> &Name {
         match self.as_ref() {
@@ -76,6 +82,35 @@ impl Level {
             _                  => false
         }
     }
+
+    pub fn has_param(&self) -> bool {
+        match self.as_ref() {
+            Zero => false,
+            Succ(inner) => inner.has_param(),
+            Max(l, r) | IMax(l, r) => l.has_param() || r.has_param(),
+            Param(_) => true
+        }
+    }
+
+
+
+
+    pub fn get_undef_param(&self, params : &Vec<Level>) -> Option<Level> {
+        match self.as_ref() {
+            Zero => None,
+            Succ(inner) => inner.get_undef_param(params),
+            Max(lhs, rhs) | IMax(lhs, rhs) => {
+                lhs.get_undef_param(params).or(rhs.get_undef_param(params))
+            },
+            Param(_) => {
+                if !params.contains(self) {
+                    return Some(self.clone())
+                } else {
+                    None
+                }
+            }
+        }
+     }
 
     /// A non-naive way of combining two `Level` values (naive would be just 
     /// creating a Max). gets used in `simplify`.
@@ -112,23 +147,24 @@ impl Level {
     /// `L` and execute :
     ///  for each node `n` in `L`
     /// if `n` is a Param, and `M` contains a mapping `n |-> x`, replace `n` with `x`
-    pub fn instantiate_lvl(&self, substs : &Vec<(Level, Level)>) -> Level {
+    pub fn instantiate_lparams<'l, I>(&self, substs : I) -> Level 
+    where I : Iterator<Item = (&'l Level, &'l Level)> + Clone {
         match self.as_ref() {
             Zero => mk_zero(),
-            Succ(inner) => mk_succ(inner.instantiate_lvl(substs)),
+            Succ(inner) => mk_succ(inner.instantiate_lparams(substs)),
             Max(a, b) => {
-                let a_prime = a.instantiate_lvl(substs);
-                let b_prime = b.instantiate_lvl(substs);
+                let a_prime = a.instantiate_lparams(substs.clone());
+                let b_prime = b.instantiate_lparams(substs);
                 mk_max(a_prime, b_prime)
             },
             IMax(a, b) => {
-                let a_prime = a.instantiate_lvl(substs);
-                let b_prime = b.instantiate_lvl(substs);
+                let a_prime = a.instantiate_lparams(substs.clone());
+                let b_prime = b.instantiate_lparams(substs);
                 mk_imax(a_prime, b_prime)
             },
             Param(..) => {
-                substs.iter()
-                      .find(|(l, _)| l == self)
+                substs.clone()
+                      .find(|(l, _)| *l == self)
                       .map(|(_, r)| r.clone())
                       .unwrap_or_else(|| self.clone())
             }
@@ -153,20 +189,36 @@ impl Level {
     ///```
     pub fn ensure_imax_leq(&self, lhs : &Level, rhs : &Level, diff : i32) -> bool {
         assert!(self.is_param());
+        let zero_ = mk_zero();
+        let succ_of_ = mk_succ(self.clone());
 
-        let zero_map =  vec![(self.clone(), mk_zero())];
-        let nonzero_map = vec![(self.clone(), mk_succ(self.clone()))];
-
-
-        let closure = |subst : &Vec<(Level, Level)>, left : &Level, right : &Level| {
-            let left_prime  = left.instantiate_lvl(subst).simplify();
-            let right_prime = right.instantiate_lvl(subst).simplify();
+        let closure = |subst : Option<(&Level, &Level)> , left : &Level, right : &Level| {
+            let left_prime = left.instantiate_lparams(subst.clone().into_iter()).simplify();
+            let right_prime = right.instantiate_lparams(subst.into_iter()).simplify();
             left_prime.leq_core(&right_prime, diff)
         };
 
-        closure(&zero_map, lhs, rhs)
+        //let zero_lhs = lhs.instantiate_lparams(Some((self, &zero_)).into_iter());
+        //let zero_rhs = rhs.instantiate_lparams(Some((self, &zero_)).into_iter());
+
+        //let succ_lhs = lhs.instantiate_lparams(Some((self, &succ_of_)).into_iter());
+        //let succ_rhs = rhs.instantiate_lparams(Some((self, &succ_of_)).into_iter());
+
+        //zero_lhs.leq_core(&zero_rhs, diff)
+        //&&
+        //succ_lhs.leq_core(&succ_rhs, diff)
+
+        closure(Some((self, &zero_)), lhs, rhs)
         &&
-        closure(&nonzero_map, lhs, rhs)
+        closure(Some((self, &succ_of_)), lhs, rhs)
+    }
+
+    pub fn is_geq(&self, other : &Level) -> bool {
+        if self.eq_by_antisymm(other)  {
+            return true
+        } else {
+            !(self.leq(other))
+        }
     }
 
     /// Essentially just a big analysis of different cases to determine (in the 
@@ -253,6 +305,10 @@ impl Level {
         let l2 = other.simplify();
         
         l1.leq_core(&l2, 0) && l2.leq_core(&l1, 0)
+    }
+
+    pub fn is_def_eq(&self, other : &Level) -> bool {
+        self.eq_by_antisymm(other)
     }
 
     /// There is no level strictly less than Zero, so for any level `L`, if `L` is 
@@ -352,21 +408,23 @@ impl std::fmt::Debug for Level {
 impl std::fmt::Debug for InnerLevel {
     fn fmt(&self, f : &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            Zero           => write!(f, "Zero"),
+            Zero           => write!(f, "0"),
             Succ(_)        => {
                 let outer = Level::from(self.clone());
                 let (succs, inner) = outer.to_offset();
                 let s = if inner.is_zero() {
-                    format!("Sort {}", succs)
+                    format!("1 + {}", succs)
                 } else {
                     format!("{} + {:?}", succs, inner)
                 };
 
                 write!(f, "{}", s)
             }
-            Max(lhs, rhs)  => write!(f, "Max({:?}, {:?})", lhs, rhs),
-            IMax(lhs, rhs) => write!(f, "IMax({:?}, {:?})", lhs, rhs),
-            Param(n)       => write!(f, "Param({:?})", n)
+            Max(lhs, rhs)  => write!(f, "M({:?}, {:?})", lhs, rhs),
+            IMax(lhs, rhs) => write!(f, "I({:?}, {:?})", lhs, rhs),
+            Param(n)       => write!(f, "{:?}", n)
         }
     }
 }
+
+

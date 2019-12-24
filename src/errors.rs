@@ -11,6 +11,43 @@ use std::fmt::Debug;
 /// and directness. 
 
 
+pub fn quot_rec_bad_app<T : Debug>(loc : u32, arg_received : &T) -> ! {
+    eprintln!("function tc::reduce_quot_rec; line {} should always get an `App` term, but got {:#?}\n", loc, arg_received);
+    std::process::exit(-1);
+}
+
+pub fn unfold_definition_infallible_failed<T : Debug>(loc : u32, arg_received : &T) -> ! {
+    eprintln!("function tc::unfold_definition_infallible line {}; should always get `Some`, but got a None with arg : {:#?}\n", loc, arg_received);
+    std::process::exit(-1);
+}
+
+pub fn mutual_different_universes<T : Debug>(loc : u32, owise1 : &T, owise2 : &T) -> ! {
+    eprintln!("function `check_inductive_types` line {}; mutually inductive types must live in the same universe, but u1 was {:#?}, while u2 was : {:#?}", loc, owise1, owise2);
+    std::process::exit(-1);
+}
+
+
+pub fn use_dep_elim_not_sort<T : Debug>(loc : u32, owise : &T) -> ! {
+    eprintln!("function `check_inductive_types` line {}; check `use_dep_elim` expected a Sort, but got {:#?}", loc, owise);
+    std::process::exit(-1);
+}
+
+
+pub fn check_inductive_i_neq(loc : u32, i : usize, num_params : usize) -> ! {
+    eprintln!("function `check_inductive_types` line {}; `i` must equal num params, but i was {}, while num_params was {}", loc, i, num_params);
+    std::process::exit(-1);
+}
+pub fn check_inductive_bad_indices(loc : u32, idx : usize) -> ! {
+    eprintln!("function `check_inductive_types` line {}; expected to find an element at {} of `nindices`, but it didn't exist!\n", loc, idx);
+    std::process::exit(-1);
+}
+
+
+pub fn err_get_param_type<T : Debug>(loc : u32, owise : &T) -> ! {
+    eprintln!("add_inductive line {}; function `get_param_type` expected a Local expr, but got {:#?}\n", loc, owise);
+    std::process::exit(-1);
+}
+
 pub fn err_get_serial<T : Debug>(loc : u32, owise : &T) -> ! {
     eprintln!("expr line {}; Expr::get_serial is a partial function defined only on expresisons made with the `Local` constructor, but it was called with {:?}\n", loc, owise);
     std::process::exit(-1);
@@ -67,7 +104,7 @@ pub fn err_req_def_eq<T : Debug>(loc : u32, got1 : &T, got2 : &T) -> ! {
 }
 
 pub fn err_check_type<T : Debug>(loc : u32, got1 : &T, got2 : &T) -> ! {
-    eprintln!("tc line {}; the function check_type expected the following two expression to be definitionally equal, but they were not. Got E1 : {:?}\n\nE2 : {:?}\n\n", loc, got1, got2);
+    eprintln!("tc line {}; the function check_type expected the following two expression to be definitionally equal, but they were not. Got \nE1 : {:?}\n\nE2 : {:?}\n\n", loc, got1, got2);
     std::process::exit(-1);
 }
 
@@ -113,3 +150,62 @@ pub fn err_parse_kind<T : Debug>(t : &T) -> String {
    format!("unrecognized match on item kind while parsing. Expected 'N' 'U', or 'E', got {:?}\n", t)
 }
 
+pub fn toplevel_err<T : Debug>(t : &T) -> ! {
+   eprintln!("execution failed with error : {:?}\n", t);
+   std::process::exit(-1)
+}
+
+
+
+
+pub type NanodaResult<T> = Result<T, NanodaErr>;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NanodaErr {
+    BadIndexErr(&'static str, u32, usize),
+    NotSortErr(&'static str, u32),
+    NotLocalErr(&'static str, u32),
+    NotBinderErr(&'static str, u32),
+    DupeLparamErr(&'static str, u32, usize),
+    NonposOccurrenceErr(&'static str, u32),
+    InvalidOccurrenceErr(&'static str, u32),
+    UseDepElimNotSortErr,
+    GetParamTypeErr,
+    NoneErr(&'static str, u32, &'static str),
+    CnstrBadParamTypeErr,
+    CnstrBadTypeErr,
+    CnstrUnivErr,
+    ParseExhaustedErr(usize, u32),
+    ParseIntErr(usize, u32, std::num::ParseIntError),
+    ParseStringErr(usize, u32),
+    TcNeqErr(&'static str, u32),
+    
+
+
+}
+
+impl std::fmt::Display for NanodaErr {
+    fn fmt(&self, f : &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            NanodaErr::BadIndexErr(file, loc, idx) => write!(f, "Got a fatal error at {} line {} for a bad index. Tried to get {}\n", file, loc, idx),
+            NanodaErr::NotSortErr(file, loc)  => write!(f, "Got a fatal error at {} line {}; tried to get info about a `Sort` Expr, but passed ar was not a Sort.\n", file, loc),
+            NanodaErr::NotLocalErr(file, loc)  => write!(f, "Got a fatal error at {} line {}; tried to get info about a `Local` Expr, but passed ar was not a Sort.\n", file, loc),
+            NanodaErr::NotBinderErr(file, loc)  => write!(f, "Got a fatal error at {} line {}; Function expected a binder expression (Pi or Lambda), but got something else.\n", file, loc),
+            NanodaErr::DupeLparamErr(file, loc, idx)  => write!(f, "Got a fatal error at {} line {}; Inductive type declarations should not contain duplicate univer parameters, but a duplicate was found at idx {}.\n", file, loc, idx),
+            NanodaErr::NonposOccurrenceErr(file, loc) => write!(f, "Got a fatal error at {} line {}; function `check_positivity` found nonpositive occurence of inductive beind declared", file, loc),
+            NanodaErr::InvalidOccurrenceErr(file, loc) => write!(f, "Got a fatal error at {} line {}; function `check_positivity` found an invalid occurence of inductive being declared", file, loc),
+            NanodaErr::UseDepElimNotSortErr => write!(f, "inductive::use_dep_elim() was supposed to get a Sort, but didn't"),
+            NanodaErr::GetParamTypeErr => write!(f, "inductive::get_param_type() was supposed to get a Local, but didn't"),
+            NanodaErr::NoneErr(file, loc, msg) => write!(f, "Got a fatal err (None err) in {} line {}; {}", file, loc, msg),
+            NanodaErr::CnstrBadParamTypeErr => write!(f, "inductive constructor's paramter was not well-typed!"),
+            NanodaErr::CnstrUnivErr => write!(f, "inductive constructor's universe was too big!"),
+            NanodaErr::CnstrBadTypeErr => write!(f, "inductive constructor's type was incorrect!"),
+            NanodaErr::ParseExhaustedErr(line, source) => write!(f, "Parse error at source line {}, source line {} : source iterator unexpectedly yielded None (was out of elements)", line, source),
+            NanodaErr::ParseIntErr(line, source, err) => write!(f, "Parse error at lean output line {}, source line {} : {}", line, source, err),
+            NanodaErr::ParseStringErr(line, source) => write!(f, "Parse error at lean output line {}, source line {}", line, source),
+            NanodaErr::TcNeqErr(file, loc) => write!(f, "Adding a declaration failed because it was not well-typed! {} line {}", file, loc),
+        }
+    }
+}
+
+impl std::error::Error for NanodaErr {}

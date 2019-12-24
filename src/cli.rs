@@ -17,7 +17,7 @@ use crate::env::Env;
 #[structopt(name = "nanoda",
             about = "A type checker for the Lean theorem prover",
             author = "ammkrn",
-            version = "0.0.1")]
+            version = "0.2.0")]
 pub struct Opt {
     //A flag, true if used in the command line. Note doc comment will
     //be used for the help message of the flag.
@@ -26,12 +26,12 @@ pub struct Opt {
     pub debug: bool,
 
      
-    /** tell r_type how many threads you want it to use.
-        Use `1` to check in serial, though r_type is
-        very much not optimized for serial execution.
-        Recommended : 4-8. */
-    #[structopt(short = "t", long = "threads", default_value = "4")]
-    pub num_threads : u64,
+    ///** tell r_type how many threads you want it to use.
+    //    Use `1` to check in serial, though r_type is
+    //    very much not optimized for serial execution.
+    //    Recommended : 4-8. */
+    //#[structopt(short = "t", long = "threads", default_value = "4")]
+    //pub num_threads : u64,
 
     /** tell r_type you want to pretty print something; options and the
         list of definitions to print are set in config files, called

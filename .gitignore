@@ -1,3 +1,6 @@
 /target
 **/*.rs.bk
 callgrind*
+src/parser.rs
+src/inductive/pure_addinductive.rs
+src/local_ctx.rs

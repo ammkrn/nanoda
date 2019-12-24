@@ -1,22 +1,42 @@
 use std::sync::Arc;
 use std::str::SplitWhitespace;
+use std::collections::VecDeque as VecD;
 
 use crate::name::{ Name, mk_anon };
-use crate::env::{ Env, Modification, Axiom, Definition };
 use crate::quot::new_quot;
-use crate::inductive::Inductive;
+//use crate::inductive::Inductive;
 use crate::pretty::components::Notation;
-use crate::utils::{ Either::*, END_MSG_ADD, ModQueue };
+use crate::utils::{ Either::*, END_MSG_ADD, END_MSG_ADD2, ModQueue, DeclarationKindQueue };
 use crate::errors;
 use crate::level::{ Level, mk_imax, mk_max, mk_succ, mk_param, mk_zero };
 use crate::expr::{ Expr, Binding, BinderStyle, mk_app, mk_prop, mk_sort,
                    mk_var, mk_let, mk_pi, mk_lambda, mk_const };
+use crate::new_inductive::newinductive::{ InductiveDeclar, InductiveType };
+use crate::new_inductive::constructor::{ Constructor };
+use crate::inductive::Inductive;
+
+use crate::recursor::RecursorVal;
+use crate::env::{ Env, 
+                  Modification, 
+                  CompiledModification,
+                  Axiom, 
+                  Definition, 
+                  ConstantVal, 
+                  ConstantInfo, 
+                  ConstantInfo::*,
+                  DefinitionVal,
+                  DeclarationKind };
 
 use parking_lot::RwLock;
 
 use ParseErr::*;
 
 pub type ParseResult<T> = std::result::Result<T, ParseErr>;
+
+fn fork_inner_env(env : &Arc<RwLock<Env>>) -> Arc<RwLock<Env>> {
+    let cloned_env = env.read().clone();
+    Arc::new(RwLock::new(cloned_env))
+}
 
 #[derive(Debug, Clone)]
 pub enum ParseErr {
@@ -42,19 +62,23 @@ pub struct LineParser<'s> {
     pub levels : Vec<Level>,
     pub exprs  : Vec<Expr>,
     pub queue_handle : &'s ModQueue,
+    pub new_queue_handle : &'s DeclarationKindQueue,
     pub env_handle : &'s Arc<RwLock<Env>>,
+    pub new_env_handle : &'s Arc<RwLock<Env>>,
     pub prop : Expr
 }
 
 impl<'s> LineParser<'s> {
-    pub fn new(queue_handle : &'s ModQueue, env_handle : &'s Arc<RwLock<Env>>) -> LineParser<'s> {
+    pub fn new(queue_handle : &'s ModQueue, env_handle : &'s Arc<RwLock<Env>>, new_queue_handle : &'s DeclarationKindQueue, new_env_handle : &'s Arc<RwLock<Env>>) -> LineParser<'s> {
         let mut parser = LineParser {
             line_num: 1usize,
             names : Vec::with_capacity(12_000),
             levels : Vec::with_capacity(250),
             exprs : Vec::with_capacity(400_000),
             queue_handle,
+            new_queue_handle,
             env_handle,
+            new_env_handle,
             prop : mk_prop()
 
         };
@@ -76,8 +100,8 @@ impl<'s> LineParser<'s> {
         self.prop.clone()
     }
 
-    pub fn parse_all(s : String, queue_handle : &'s ModQueue, env_handle : &'s Arc<RwLock<Env>>) -> ParseResult<()> {
-        let mut parser = LineParser::new(queue_handle, env_handle);
+    pub fn parse_all(s : String, queue_handle : &'s ModQueue, env_handle : &'s Arc<RwLock<Env>>, new_queue_handle : &'s DeclarationKindQueue, new_env_handle : &'s Arc<RwLock<Env>>) -> ParseResult<()> {
+        let mut parser = LineParser::new(queue_handle, env_handle, new_queue_handle, new_env_handle);
         let mut as_lines = s.lines();
 
         while let Some(line) = &mut as_lines.next() {
@@ -90,6 +114,10 @@ impl<'s> LineParser<'s> {
 
         parser.queue_handle.push(END_MSG_ADD);
         parser.queue_handle.push(END_MSG_ADD);
+
+        parser.new_queue_handle.push(END_MSG_ADD2);
+        parser.new_queue_handle.push(END_MSG_ADD2);
+
         Ok(())
     }
 
@@ -274,8 +302,14 @@ impl<'s> LineParser<'s> {
         let name = self.get_name(ws)?;
         let ty = self.get_expr(ws)?;
         let uparams = self.get_uparams(ws)?;
-        let axiom = Axiom::new(name, Arc::new(uparams), ty);
-        Ok(self.queue_handle.push(Left(Modification::AxiomMod(axiom))))
+
+        let new_axiom = crate::env::AxiomVal::new(name.clone(), VecD::from(uparams.clone()), ty.clone(), None);
+        let axiom = Axiom::new(name.clone(), Arc::new(uparams), ty);
+
+        self.new_queue_handle.push(Left(DeclarationKind::AxiomDeclar { val : new_axiom }));
+
+        let result = Ok(self.queue_handle.push(Left(Modification::AxiomMod(axiom))));
+        result
 
     }
 
@@ -283,13 +317,37 @@ impl<'s> LineParser<'s> {
         let name = self.get_name(ws)?;
         let ty = self.get_expr(ws)?;
         let val = self.get_expr(ws)?;
+
+
         let uparams = self.get_uparams(ws)?;
-        let def = Definition::new(name, Arc::new(uparams), ty, val);
-        Ok(self.queue_handle.push(Left(Modification::DefMod(def))))
+
+        let NEW_definition = DefinitionVal::new(self.env_handle.clone(), name.clone(), uparams.clone(), ty.clone(), val.clone());
+
+        let def = Definition::new(name.clone(), Arc::new(uparams), ty, val);
+        // compiled_old & unwrapped are for debugging only.
+        let compiled_old = match Modification::DefMod(def.clone()).compile(&self.env_handle.clone()) {
+            crate::env::CompiledModification::CompiledDefinition(declar, rr, TY, VAL) => {
+                assert_eq!(&declar.ty, &TY);
+                declar
+            }
+            _ => panic!()
+        };
+
+
+        assert_eq!(&NEW_definition.constant_val.name, &compiled_old.name);
+        assert_eq!(&NEW_definition.constant_val.lparams.iter().cloned().collect::<Vec<Level>>(), &compiled_old.univ_params.as_ref().clone());
+        assert_eq!(&NEW_definition.constant_val.type_, &compiled_old.ty);
+        assert_eq!(NEW_definition.hint.debug_get_regular_height() as usize, compiled_old.height as usize);
+
+
+        self.new_queue_handle.push(Left(DeclarationKind::DefinitionDeclar { val : NEW_definition }));
+        let result = Ok(self.queue_handle.push(Left(Modification::DefMod(def))));
+        result
     }
 
     pub fn make_quotient(&mut self) -> ParseResult<()> {
         self.queue_handle.push(Left(new_quot()));
+
         Ok(())
     }
 
@@ -314,8 +372,40 @@ impl<'s> LineParser<'s> {
             intros_buf.push((name, ty));
         }
 
-        let ind_mod = Inductive::new(name, Arc::new(param_vec), ty, num_params, intros_buf, self.env_handle.clone());
-        Ok(self.queue_handle.push(Left(Modification::IndMod(ind_mod))))
+        let ind_mod = Inductive::new(name.clone(), Arc::new(param_vec.clone()), ty.clone(), num_params, intros_buf.clone(), self.env_handle.clone());
+
+        let NEW_constr_buf = intros_buf.clone().into_iter().map(|(n, e)| {
+            Constructor::new(&n, &e)
+        }).collect::<VecD<Constructor>>();
+
+        let NEW_ind_type = InductiveType::new(name.clone(), ty.clone(), NEW_constr_buf);
+
+        //assert_eq!(NEW_ind_type.constructors.len(), ind_mod.intros.len());
+        let NEW_cnstr_names = NEW_ind_type.constructors.iter().map(|x| x.name.clone()).collect::<Vec<Name>>();
+        let NEW_cnstr_types = NEW_ind_type.constructors.iter().map(|x| x.type_.clone()).collect::<Vec<Expr>>();
+        let zipped = NEW_cnstr_names.iter().zip(NEW_cnstr_types);
+        for ((n1, t1), (n2, t2)) in zipped.zip(intros_buf) {
+            assert_eq!(n1, &n2);
+            assert_eq!(t1, t2);
+        }
+
+
+
+        let NEW_ind = InductiveDeclar::new(
+            name.clone(),
+            VecD::from(param_vec.clone()), 
+            num_params, 
+            VecD::from(vec![NEW_ind_type]), 
+            false);
+
+        inductive_assertions(&self.env_handle, ind_mod.clone(), &self.new_env_handle, NEW_ind.clone());
+
+        self.new_queue_handle.push(Left(DeclarationKind::InductiveDeclar_ { val : NEW_ind }));
+        self.queue_handle.push(Left(Modification::IndMod(ind_mod)));
+        Ok(())
+
+
+        //Ok(self.queue_handle.push(Left(Modification::IndMod(ind_mod))))
     }
 
 }
@@ -336,4 +426,42 @@ fn write_elem_strict<T>(v : &mut Vec<T>, new_elem : T, pos : usize) -> ParseResu
         }
     }
     Ok(())
+}
+
+
+
+
+fn inductive_assertions(old_env : &Arc<RwLock<Env>>, old_ind : Inductive, new_env : &Arc<RwLock<Env>>, new_ind : InductiveDeclar) {
+        // DEBUG
+        let old_env_clone = fork_inner_env(&old_env);
+        let as_mod = Modification::IndMod(old_ind);
+        let old_compiled : CompiledModification = as_mod.compile(&old_env_clone);
+
+        let old_major_idx : Option<usize> = old_compiled.get_major_idx();
+
+        let new_env_clone = fork_inner_env(new_env);
+        let new_ind_name = new_ind.name.clone();
+        let rec_name = new_ind_name.extend_str("rec");
+        let added = DeclarationKind::InductiveDeclar_ { val : new_ind }.add_to_env(new_env_clone.clone(), true);
+
+        let fetched_const_info = new_env_clone.read().constant_infos.get(&rec_name).cloned();
+        let new_rec_val = match new_env_clone.read().constant_infos.get(&rec_name) {
+            Some(ConstantInfo::RecursorInfo(recursor_val @ RecursorVal { .. })) => recursor_val.clone(),
+            _ => panic!("Found no recursor for new!")
+        };
+
+        assert_eq!(old_compiled.is_k(), new_rec_val.is_k);
+
+        if (!new_rec_val.is_k) {
+            let new_major_idx = new_rec_val.nparams 
+                              + new_rec_val.nmotives 
+                              + new_rec_val.nminors 
+                              + new_rec_val.nindices;
+            let old_major_idx = match old_major_idx {
+                Some(x) => x.clone(),
+                None => panic!("old major idx was none, but new was some for {} !", new_ind_name)
+            };
+            assert_eq!(new_major_idx, old_major_idx);
+        }
+
 }
