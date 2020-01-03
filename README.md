@@ -11,15 +11,7 @@ Nanoda is a type checker for the Lean theorem prover, specifically its [export f
 
 ### Future plans
 
-This was written mostly just to try and learn more about dependent type theory and math in general, so I would like to continue expanding it with features that make it more informative/educational in the hopes that other people will find it helpful. 
-
-+ In the short term, I want to add the ability to isolate/print components of definitions to the pretty printer interface, IE if you want to see specifically the motive and minor premises for a type, you get just that information from the command line instead of looking through the source code and debug printing it. I would also like to add highlighting/bracket coloring to the pretty printer output.
-
-+ Also short term, I'll be looking into whether or not the ability to visualize expression graphs with graphviz is actually helpful or not. It's pretty easy to do, but most of the expressions are so large that it might not be very helpful.
-
-+ In the mid-long term, I'd like to add a time-travelling debugger style interface that allows users to walk forward and backward through the steps of type inference and unification one at a time with an annotation that explains what each step is doing. I'm still thinking about the best way to go about this part.
-
-+ I would really like to be able to either add sections to the doc comments, or make a separate markdown book that ties portions of the implementation to more information about their basis in math and dependent type theory, or annotations that just say "this implementation is essentially axiomatic, it does what it does because it needs to, the end". This is (IMO) the hardest/experts only part that will (if it happens) likely come from outside sources who know more about this than I do.
+Active development of this repository is continuing on the `v0.2.x` branch, which is modeled after Lean v4. Please check that branch for the latest changes.
 
 ### Rest
 
@@ -52,13 +44,7 @@ Leonard de Moura, Soonho Kong, Sebastian Ullrich, Gabriel Ebner, Floris van Door
 
 ### 将来
 
-このプロジェクトの主たる目的は型論理の教育道具になることですから、そのためのフィーチャーをこれからも追加していきたいんです。
-
-+ 近いうちに、定義・環境にあるアイテムから特定の成分を抜き出せる機能を実装していくつもりです。例えば、ある定義の motive と minor premises だけ見たい時、直接にコマンドラインオプションから出来るようにすることです。プリティープリンターがにはいライティングなどのことも有効にしたいんだと思います。
-
-+ それから、time travelling debugger のようなインタフェースがある型推論・ユニフィケーションのステップを一歩ずつで進んでいけるモードを作っていきたいんです。もっともよい実装する方法にすいてまだ考えているんですけど。
-
-+ ドックコメント、もしくは自立のドキュメンテーションに、実装の具体的な成分はどうやって数学・依存型論理と繋がっているかってことを説明する文もあったらすごくいいと思いますが、この部分は私より型論理をしっかり抑えている方から来たほうがぜったいに良かったです。
+このリポシトリーの開発は現在 Lean v4 向けの `v0.2.x` というブランチに続いています。最新開発のアプデートが見たい方々にそのブランチがおすすめです。
 
 ### 残り
 
