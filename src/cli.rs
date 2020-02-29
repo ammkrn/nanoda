@@ -18,6 +18,10 @@ use crate::env::Env;
             author = "ammkrn",
             version = "0.0.1")]
 pub struct Opt {
+
+    #[structopt(short = "f", long = "force")]
+    pub force : bool,
+
     #[structopt(short = "d", long = "debug")]
     pub debug: bool,
 

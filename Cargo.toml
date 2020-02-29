@@ -12,7 +12,7 @@ default = ["mimalloc"]
 
 [profile.release]
 opt-level=3
-lto=true
+#lto=true
 #debug = true
 
 [dependencies]

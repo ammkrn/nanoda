@@ -39,8 +39,24 @@ static GLOBAL: mimallocator::Mimalloc = mimallocator::Mimalloc;
 // core +- 2000 個の定義を保持出来るぐらい初期化されます。.
 pub const EXPECTED_NUM_MODS : usize = 11_000;
 
+pub const WARN_OUTDATED_HEADER : &str = "\n\n    !! このリポジトリは非推奨です (deprecate されたんです) !!";
+pub const WARN_OUTDATED : &str = 
+    "\n
+    もう開発・手入れされません。このプロジェクトの最新開発は nanoda_lib :
+    https://github.com/ammkrn/nanoda_lib.git
+    に続いています。そっちのバージョンはサンプル実行形式が examples ダイレクトリー
+    にあります。このバージョンをどうしても使いたい場合、`-f` あるいは `--force`
+    を CLI へ渡すようにできます。例えば:
+    `./nanoda --force export.out`\n";
 fn main() {
     let opt = Opt::from_args();
+
+    if (!opt.force) {
+        println!("{}", WARN_OUTDATED_HEADER);
+        println!("{}", WARN_OUTDATED);
+        std::process::exit(-1);
+    }
+
 
     if opt.debug {
         println!("CLI returned these arguments : {:#?}", opt);
