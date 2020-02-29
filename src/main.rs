@@ -41,8 +41,26 @@ static GLOBAL: mimallocator::Mimalloc = mimallocator::Mimalloc;
 // (relatively) costly operation.
 pub const EXPECTED_NUM_MODS : usize = 11_000;
 
+pub const WARN_OUTDATED_HEADER : &str = "\n\n    !! This repository has been archived!!";
+pub const WARN_OUTDATED : &str = 
+    "\n
+    It is out of date and no longer updated or maintained.
+    Current development is continuing in the form of `nanoda_lib` :
+    https://github.com/ammkrn/nanoda_lib.git
+    which has a sample binary in its examples directory. If you're SURE
+    you want to keep using this verison, pass the command line flag
+    `-f` or `--force`, IE `./nanoda --force export.out\n";
+
 fn main() {
+
     let opt = Opt::from_args();
+
+    if (!opt.force) {
+        println!("{}", WARN_OUTDATED_HEADER);
+        println!("{}", WARN_OUTDATED);
+        std::process::exit(-1);
+    }
+
 
     if opt.debug {
         println!("CLI returned these arguments : {:#?}", opt);

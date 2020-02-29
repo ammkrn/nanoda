@@ -126,7 +126,7 @@ dependencies = [
 
 [[package]]
 name = "nanoda"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "crossbeam-utils 0.6.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "fxhash 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",

@@ -19,6 +19,9 @@ use crate::env::Env;
             author = "ammkrn",
             version = "0.0.1")]
 pub struct Opt {
+
+    #[structopt(short = "f", long = "force")]
+    pub force : bool,
     //A flag, true if used in the command line. Note doc comment will
     //be used for the help message of the flag.
     //Activate debug mode (currently does nothing)

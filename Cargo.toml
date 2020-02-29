@@ -1,6 +1,6 @@
 [package]
 name = "nanoda"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["ammkrn <ammkrn@tuta.io>"]
 edition = "2018"
 
@@ -12,7 +12,7 @@ default = ["mimalloc"]
 
 [profile.release]
 opt-level=3
-lto=true
+#lto=true
 #debug = true
 
 [dependencies]
