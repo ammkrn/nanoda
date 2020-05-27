@@ -87,13 +87,19 @@ impl TypeChecker {
         self.is_prop(&inferred)
     }
 
-    pub fn is_proof(&mut self, p: &Expr) -> bool {
+    pub fn is_proof(&mut self, p: &Expr) -> (bool, Expr) {
         let inferred = self.infer(p);
-        self.is_proposition(&inferred)
+        (self.is_proposition(&inferred), inferred)
     }
 
     fn is_proof_irrel_eq(&mut self, e1: &Expr, e2: &Expr) -> bool {
-        self.is_proof(e1) && self.is_proof(e2)
+        match self.is_proof(e1) {
+            (true, t1) => match self.is_proof(e2) {
+                (true, t2) => self.check_def_eq(&t1, &t2) == EqShort,
+                _ => false
+            },
+            _ => false
+        }
     }
 
 

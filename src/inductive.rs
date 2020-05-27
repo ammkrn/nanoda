@@ -118,7 +118,7 @@ impl Inductive {
         let bool2 = self.intros.len() > 1;
         let bool3 = compiled_intros.iter().any(|intro| {
             intro.intro_arguments.iter().any(|arg| {
-                !self.map_tc(|tc| tc.is_proof(arg)) && !intro.intro_type_args.contains(arg)
+                !self.map_tc(|tc| tc.is_proof(arg).0) && !intro.intro_type_args.contains(arg)
             })
         });
 
