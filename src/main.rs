@@ -126,12 +126,12 @@ fn check_parallel(source : String, num_threads : usize, print : bool) -> usize {
         // add and parse can be done separately/concurrently, but both MUST be done 
         // in order. So, when parsing ends, that thread goes immediately to
         // the check pool instead of adding.
-        thread_holder.push(s.spawn(|_| {
+        thread_holder.push(s.builder().stack_size(8388608).spawn(|_| {
             if let Err(e) =  LineParser::parse_all(source, &add_queue, &env) {
                 errors::export_file_parse_err(line!(), e)
             }
             loop_check(&check_queue, &env);
-        }));
+        }).expect("Failed to spawn scoped thread!"));
 
 
         thread_holder.push(s.spawn(|_s| {
@@ -146,7 +146,10 @@ fn check_parallel(source : String, num_threads : usize, print : bool) -> usize {
                 loop_check(&check_queue, &env);
             })); 
         }
-
+        
+        for t in thread_holder {
+            t.join().expect("scoped thread panicked!")
+        }
     });
 
     if scope_.is_err() {

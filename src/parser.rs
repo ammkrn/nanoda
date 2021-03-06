@@ -314,7 +314,7 @@ impl<'s> LineParser<'s> {
             intros_buf.push((name, ty));
         }
 
-        let ind_mod = Inductive::new(name, Arc::new(param_vec), ty, num_params, intros_buf, self.env_handle.clone());
+        let ind_mod = crate::inductive::ProtoInd { name, params: Arc::new(param_vec), ty, num_params, intros: intros_buf };
         Ok(self.queue_handle.push(Left(Modification::IndMod(ind_mod))))
     }
 

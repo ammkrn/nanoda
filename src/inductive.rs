@@ -42,6 +42,15 @@ use crate::expr::{ Expr,
 
 
 #[derive(Debug, Clone)]
+pub struct ProtoInd {
+    pub name: Name,
+    pub params: Arc<Vec<Level>>,
+    pub ty: Expr,
+    pub num_params: usize,
+    pub intros: Vec<(Name, Expr)>,
+}
+
+#[derive(Debug, Clone)]
 pub struct Inductive {
     pub num_params: usize,
     pub intros: Vec<(Name, Expr)>,

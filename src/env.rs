@@ -171,7 +171,7 @@ pub enum Modification {
     AxiomMod (Axiom),
     DefMod   (Definition),
     QuotMod  (Quot),
-    IndMod   (Inductive),
+    IndMod   (crate::inductive::ProtoInd),
 }
 
 
@@ -251,7 +251,18 @@ impl Modification {
                                    def.val)
             },
             QuotMod(quot) => quot.compile_self(),
-            IndMod(ind) => ind.compile(env),
+            IndMod(ind) => {
+                let ind = Inductive::new(
+                    ind.name,
+                    ind.params,
+                    ind.ty,
+                    ind.num_params,
+                    ind.intros,
+                    env.clone()
+                );
+                ind.compile(&env.clone())
+            }
+
         }
     } 
 }

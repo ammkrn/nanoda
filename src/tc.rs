@@ -157,35 +157,37 @@ impl TypeChecker {
             return cached.clone()
         } else {
             let cache_key = e.clone();
-            let result = self.whnf_core(e, Some(FlagT));
+            let result = self.whnf_core(e.clone(), Some(FlagT));
             self.whnf_cache.insert(cache_key, result.clone());
             result
         }
     }
 
-    pub fn whnf_core(&mut self, e : &Expr, _flag : Option<Flag>) -> Expr {
-        let flag = _flag.unwrap_or(FlagT);
-        let (_fn, apps) = e.unfold_apps_refs();
+    pub fn whnf_core(&mut self, mut e : Expr, mut _flag : Option<Flag>) -> Expr {
+        loop {
+            let flag = _flag.unwrap_or(FlagT);
+            let (_fn, apps) = e.unfold_apps_refs();
 
-        match _fn.as_ref() {
-            Sort(_, lvl) => {
-                let simpd = lvl.simplify();
-                mk_sort(simpd)
-            },
-            Lambda(..) if !apps.is_empty() => {
-                let intermed = self.whnf_lambda(_fn, apps);
-                self.whnf_core(&intermed, Some(flag))
-            },
-            Let(.., val, body) => {
-                let instd = body.instantiate(Some(val).into_iter());
-                let applied = instd.fold_apps(apps.into_iter().rev());
-                self.whnf_core(&applied, Some(flag))
-            },
-            _ => {
-                let reduced = self.reduce_hdtl(_fn, apps.as_slice(), Some(flag));
-                match reduced {
-                    Some(eprime) => self.whnf_core(&eprime, Some(flag)),
-                    None => e.clone()
+            match _fn.as_ref() {
+                Sort(_, lvl) => return mk_sort(lvl.simplify()),
+                Lambda(..) if !apps.is_empty() => {
+                    e = self.whnf_lambda(_fn, apps);
+                    _flag = Some(flag);
+                },
+                Let(.., val, body) => {
+                    let instd = body.instantiate(Some(val).into_iter());
+                    e = instd.fold_apps(apps.into_iter().rev());
+                    _flag = Some(flag);
+                },
+                _ => {
+                    let reduced = self.reduce_hdtl(_fn, apps.as_slice(), Some(flag));
+                    match reduced {
+                        Some(eprime) => { 
+                            _flag = Some(flag);
+                            e = eprime;
+                        },
+                        None => return e 
+                    }
                 }
             }
         }
@@ -384,8 +386,8 @@ impl TypeChecker {
 
     pub fn check_def_eq_core(&mut self, e1_0 : &Expr, e2_0 : &Expr) -> ShortCircuit {
 
-        let whnfd_1 = self.whnf_core(e1_0, Some(FlagF));
-        let whnfd_2 = self.whnf_core(e2_0, Some(FlagF));
+        let whnfd_1 = self.whnf_core(e1_0.clone(), Some(FlagF));
+        let whnfd_2 = self.whnf_core(e2_0.clone(), Some(FlagF));
 
         // consult different patterns laid out in 
         // check_def_eq_patterns to see how to proceed
