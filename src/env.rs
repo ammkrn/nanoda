@@ -11,6 +11,7 @@ use crate::quot::Quot;
 use crate::inductive::Inductive;
 use crate::tc::TypeChecker;
 use crate::pretty::components::Notation;
+use crate::inductive::ProtoInd;
 
 use Modification::*;
 use CompiledModification::*;
@@ -149,13 +150,12 @@ pub enum CompiledModification {
     //                      (ベース型, 紹介原理　, recursor/削除原理, 縮小規則)
 }
 
-
 #[derive(Clone)]
 pub enum Modification {
     AxiomMod (Axiom),
     DefMod   (Definition),
     QuotMod  (Quot),
-    IndMod   (Inductive),
+    IndMod   (ProtoInd),
 }
 
 
@@ -232,7 +232,17 @@ impl Modification {
                                    def.val)
             },
             QuotMod(quot) => quot.compile_self(),
-            IndMod(ind) => ind.compile(env),
+            IndMod(ind) => {
+                let ind = Inductive::new(
+                    ind.name,
+                    ind.params,
+                    ind.ty,
+                    ind.num_params,
+                    ind.intros,
+                    env.clone()
+                );
+                ind.compile(&env.clone())
+            }
         }
     } 
 }

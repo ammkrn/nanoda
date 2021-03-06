@@ -42,6 +42,14 @@ pub struct Inductive {
     pub base_declaration: Declaration,
 }
 
+#[derive(Debug, Clone)]
+pub struct ProtoInd {
+    pub name: Name,
+    pub params: Arc<Vec<Level>>,
+    pub ty: Expr,
+    pub num_params: usize,
+    pub intros: Vec<(Name, Expr)>,
+}
 
 
 impl Inductive {

@@ -122,12 +122,12 @@ fn check_parallel(source : String, num_threads : usize, print : bool) -> usize {
         // 並行文脈なら、アイテムをパース・環境に追加することは同時に出来ますが、パーシングと
         // 追加する作業はそれぞれ順序にやられなければならないんだから、自分の一人っ子のスレッド
         // でやられます。パーシングが終了された後、検査キューへ移動してってこと。
-        thread_holder.push(s.spawn(|_| {
+        thread_holder.push(s.builder().stack_size(8388608).spawn(|_| {
             if let Err(e) =  LineParser::parse_all(source, &add_queue, &env) {
                 errors::export_file_parse_err(line!(), e)
             }
             loop_check(&check_queue, &env);
-        }));
+        }).expect("Failed to spawn scoped thread!"));
 
 
         thread_holder.push(s.spawn(|_s| {
@@ -141,6 +141,10 @@ fn check_parallel(source : String, num_threads : usize, print : bool) -> usize {
             thread_holder.push(s.spawn(|_s| {
                 loop_check(&check_queue, &env);
             })); 
+        }
+
+        for t in thread_holder {
+            t.join().expect("scoped thread panicked!")
         }
 
     });
